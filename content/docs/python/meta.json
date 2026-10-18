@@ -1,0 +1,12 @@
+{
+  "title": "Python",
+  "root": true,
+  "pages": [
+    "index",
+    "getting-started",
+    "---Fundamentals---",
+    "basics",
+    "---Technical Reference---",
+    "reference"
+  ]
+}

@@ -1,0 +1,34 @@
+{
+  "name": "leccioneslab",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "next dev --port 3000 -H 0.0.0.0",
+    "build": "next build",
+    "start": "next start --port 3000 -H 0.0.0.0",
+    "lint": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@tailwindcss/postcss": "^4.0.0",
+    "clsx": "^2.1.1",
+    "fumadocs-core": "^16.17.5",
+    "fumadocs-mdx": "^15.4.7",
+    "fumadocs-ui": "^16.17.5",
+    "geist": "^1.8.1",
+    "lucide-react": "^0.546.0",
+    "next": "16.4.2",
+    "postcss": "^8.5.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "tailwind-merge": "^3.0.2",
+    "tailwindcss": "^4.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.14.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@types/mdx": "^2.0.13",
+    "typescript": "^5.7.0"
+  }
+}

@@ -1,0 +1,128 @@
+---
+title: Built-in Functions Reference
+description: Complete reference specification for Python standard built-in functions including len(), zip(), map(), and enumerate().
+---
+
+Python provides 70+ built-in functions loaded into the global namespace upon interpreter startup. This reference documents key functions with their signatures, parameter constraints, complexity guarantees, and exception behaviors.
+
+## `len(s)`
+
+Return the number of items in a container.
+
+### Signature
+```python
+def len(s: Sized) -> int: ...
+```
+
+### Parameters
+- `s`: A sequence (such as a string, bytes, tuple, list, or range) or a collection (such as a dictionary, set, or frozen set).
+
+### Return Value
+An `int` representing the total element count. Guaranteed $O(1)$ time complexity for standard library collections because Python containers store their size in an internal C struct field (`ob_size`).
+
+### Exceptions
+- `TypeError`: Raised if `s` is not a collection and does not implement the `__len__()` special method.
+
+### Example
+```python
+items = ["apple", "banana", "cherry"]
+print(len(items))  # -> 3
+
+message = "LeccionesLab"
+print(len(message))  # -> 12
+```
+
+---
+
+## `zip(*iterables, strict=False)`
+
+Iterate over several iterables in parallel, producing tuples containing an item from each one.
+
+### Signature
+```python
+def zip(*iterables: Iterable[T], strict: bool = False) -> Iterator[tuple[T, ...]]: ...
+```
+
+### Parameters
+- `*iterables`: Two or more iterable sequences or generators.
+- `strict` *(optional, Python 3.10+)*: A boolean flag. When `True`, ensures that all passed iterables have identical length.
+
+### Return Value
+A lazy iterator that yields tuples. Stops when the shortest input iterable is exhausted (unless `strict=True`).
+
+### Exceptions
+- `ValueError`: Raised if `strict=True` and one iterable is exhausted before the others.
+
+### Example
+```python
+names = ["Alice", "Bob", "Charlie"]
+scores = [95, 88, 92]
+
+for name, score in zip(names, scores):
+    print(f"{name}: {score}")
+# Output:
+# Alice: 95
+# Bob: 88
+# Charlie: 92
+
+# Strict length validation
+try:
+    list(zip([1, 2], [10, 20, 30], strict=True))
+except ValueError as e:
+    print("Mismatched sequence lengths caught!")
+```
+
+---
+
+## `enumerate(iterable, start=0)`
+
+Return an enumerate object yielding pairs containing an index count (from `start`) and the values obtained from iterating over `iterable`.
+
+### Signature
+```python
+def enumerate(iterable: Iterable[T], start: int = 0) -> Iterator[tuple[int, T]]: ...
+```
+
+### Parameters
+- `iterable`: An object supporting iteration.
+- `start`: The integer starting index value (default `0`).
+
+### Return Value
+An iterator yielding `(index, item)` tuples.
+
+### Example
+```python
+languages = ["Python", "TypeScript", "Rust"]
+
+for index, lang in enumerate(languages, start=1):
+    print(f"{index}. {lang}")
+# Output:
+# 1. Python
+# 2. TypeScript
+# 3. Rust
+```
+
+---
+
+## `map(function, *iterables)`
+
+Apply `function` to every item of iterable and return an iterator yielding the results.
+
+### Signature
+```python
+def map(function: Callable[..., R], *iterables: Iterable[Any]) -> Iterator[R]: ...
+```
+
+### Parameters
+- `function`: A callable object accepting as many arguments as there are iterables.
+- `*iterables`: One or more iterable objects.
+
+### Return Value
+A lazy iterator. Does not compute values until consumed via iteration or conversion (e.g. `list()`).
+
+### Example
+```python
+numbers = [1, 2, 3, 4]
+squared = list(map(lambda n: n ** 2, numbers))
+print(squared)  # -> [1, 4, 9, 16]
+```

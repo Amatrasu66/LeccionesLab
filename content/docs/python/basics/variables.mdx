@@ -1,0 +1,106 @@
+---
+title: Variables & Assignment
+description: Understand Python's reference-based object model, dynamic typing, rebinding semantics, and mutability.
+---
+
+In Python, variables do not hold values directly. Instead, variables are **names that reference objects** residing in memory. Understanding this distinction is essential for mastering parameter passing, data mutations, and memory performance.
+
+## Learning Objective
+
+By completing this module, you will understand:
+- The distinction between object creation, reference assignment, and rebinding.
+- The difference between value equality (`==`) and object identity (`is`).
+- Why mutable objects behave differently when referenced by multiple names.
+
+## The Reference Model
+
+When you write `x = 42`, Python:
+1. Allocates an integer object representing `42` in heap memory.
+2. Binds the symbol `x` in the current namespace to that object.
+
+```python
+# Integer allocation and rebinding
+x = 100
+y = x  # y now references the exact same integer object as x
+
+print(x is y)  # -> True (same memory id)
+
+# Rebinding x does NOT modify the object 100
+x = 200
+
+print(x)       # -> 200
+print(y)       # -> 100 (y still points to 100)
+print(x is y)  # -> False
+```
+
+## Value Equality vs. Object Identity
+
+Python provides two distinct comparison operators:
+
+| Operator | Comparison Target | Meaning |
+|---|---|---|
+| `==` | Value equality | Evaluates whether two objects contain equivalent data |
+| `is` | Object identity | Evaluates whether two references point to the exact same memory location |
+
+```python
+list_a = [1, 2, 3]
+list_b = [1, 2, 3]
+
+# Both lists have the same content
+print(list_a == list_b)  # -> True
+
+# But they are distinct instances in memory
+print(list_a is list_b)  # -> False
+print(id(list_a) != id(list_b))  # -> True
+```
+
+## Mutability and Shared References
+
+Python objects are classified into two broad categories:
+
+- **Immutable**: Integers, floats, strings, tuples, frozensets, booleans. Their state cannot be modified after creation.
+- **Mutable**: Lists, dictionaries, sets, bytearrays, custom class instances. Their internal state can be mutated in-place.
+
+When two variables reference the same mutable object, in-place mutations affect all references:
+
+```python
+team_alpha = ["Alice", "Bob"]
+team_beta = team_alpha  # Shared reference
+
+team_beta.append("Charlie")
+
+# The mutation is reflected across both names
+print(team_alpha)  # -> ['Alice', 'Bob', 'Charlie']
+print(team_beta)   # -> ['Alice', 'Bob', 'Charlie']
+```
+
+## Common Pitfall: Shallow Copying
+
+If you need a copy of a list rather than a shared reference, use slicing `[:]`, the `.copy()` method, or the `copy` module:
+
+```python
+original = [1, [2, 3]]
+shallow = original.copy()
+
+# Mutating top-level elements is isolated
+shallow[0] = 999
+print(original[0])  # -> 1 (isolated)
+
+# BUT nested mutable objects remain shared in shallow copies!
+shallow[1].append(4)
+print(original[1])  # -> [2, 3, 4] (nested mutation propagated!)
+```
+
+To copy nested structures completely, use `copy.deepcopy()`:
+
+```python
+import copy
+
+deep = copy.deepcopy(original)
+deep[1].append(5)
+print(original[1])  # -> [2, 3, 4] (completely isolated)
+```
+
+## Next Step
+
+Now that you have a firm grasp of references and mutability, explore how arguments and return values are passed in [Functions & Scope](/docs/python/basics/functions).

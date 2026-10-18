@@ -1,0 +1,78 @@
+---
+title: Getting Started with Python
+description: Set up an isolated Python 3.12+ development environment, manage dependencies with venv, and run your first script.
+---
+
+This guide walks through configuring a clean, modern Python developer environment on Linux, macOS, or Windows, emphasizing hermetic isolation and dependency hygiene.
+
+## 1. Verifying Python Version
+
+LeccionesLab targets **Python 3.12+**. Verify your system installation in your shell:
+
+```bash
+python3 --version
+# Expected output: Python 3.12.x or newer
+```
+
+If multiple versions are installed on your workstation, explicitly invoke the target version using `python3.12` or the Windows `py -3.12` launcher.
+
+## 2. Creating an Isolated Virtual Environment
+
+Never install application dependencies into your global system interpreter. Python provides the built-in `venv` module to generate isolated directory environments:
+
+```bash
+# 1. Create a project directory
+mkdir my-python-project
+cd my-python-project
+
+# 2. Initialize a local virtual environment named '.venv'
+python3 -m venv .venv
+
+# 3. Activate the environment
+# On macOS and Linux:
+source .venv/bin/activate
+
+# On Windows (Command Prompt):
+.venv\Scripts\activate.bat
+
+# On Windows (PowerShell):
+.venv\Scripts\Activate.ps1
+```
+
+Once activated, your shell prompt will show `(.venv)` and the `python` binary will point to your isolated interpreter.
+
+## 3. Writing and Running a Script
+
+Create a file named `main.py`:
+
+```python
+"""
+main.py - Initial script verification
+"""
+import sys
+
+def main() -> None:
+    version = sys.version.split()[0]
+    print(f"Python runtime active: {version}")
+    print("Welcome to LeccionesLab.")
+
+if __name__ == "__main__":
+    main()
+```
+
+Execute the script using the activated interpreter:
+
+```bash
+python main.py
+# Output:
+# Python runtime active: 3.12.x
+# Welcome to LeccionesLab.
+```
+
+## 4. Best Practices Checklist
+
+- Always include a `.gitignore` containing `.venv/`, `__pycache__/`, and `*.pyc`.
+- Pin production dependencies with `requirements.txt` or modern packaging tools.
+- Enable type checking in your editor using Pyright, mypy, or VS Code Pylance.
+
+Next, continue to [Variables & Assignment](/docs/python/basics/variables) to understand Python's object model and naming semantics.

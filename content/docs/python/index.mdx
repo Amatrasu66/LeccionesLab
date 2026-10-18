@@ -1,0 +1,43 @@
+---
+title: Overview
+description: Python is an expressive, object-oriented, and dynamically typed programming language. Master its execution model, scoping rules, and standard library on LeccionesLab.
+---
+
+Python is a versatile, high-level programming language designed for readability and rapid developer productivity. Whether building backend microservices, scientific data pipelines, or automated toolchains, Python provides clean syntax and a vast standard library ecosystem.
+
+On **LeccionesLab**, documentation is engineered for deep focus and precision. We combine progressive conceptual tutorials with authoritative reference specifications, eliminating distraction and superficial fluff.
+
+## Get started
+
+Python code runs across workstations, cloud containers, and browser WebAssembly runtimes. The initial curriculum is organized into focused milestones:
+
+- **[Getting started](/docs/python/getting-started)**: Install Python 3.12+, configure isolated virtual environments (`venv`), and execute your first standalone scripts.
+- **[Variables & Assignment](/docs/python/basics/variables)**: Understand Python's reference-based memory model, identity vs. equality, and mutable object mutations.
+- **[Functions & Scope](/docs/python/basics/functions)**: Master first-class functions, parameter unpacking (`*args`, `**kwargs`), and the LEGB scope resolution algorithm.
+- **[Built-in Functions Reference](/docs/python/reference/built-in-functions)**: Concise technical signatures, parameters, return types, and complexity guarantees for core Python primitives.
+
+## Execution Model
+
+In Python, every variable is a symbolic reference to a heap-allocated object. Unlike compiled languages with rigid stack memory slots, Python binds names dynamically:
+
+```python
+# Variables bind to heap-allocated objects
+values = [10, 20, 30]
+alias = values  # 'alias' references the exact same list object in memory
+alias.append(40)
+
+print(values)  # -> [10, 20, 30, 40]
+print(values is alias)  # -> True (identical memory address)
+```
+
+## What you can do
+
+With LeccionesLab's Python documentation track, you can:
+
+1. **Verify Semantics**: Consult precise syntax signatures and exception handling for standard built-in functions.
+2. **Prevent Edge Cases**: Avoid common anti-patterns like mutable default parameters, shallow copy mutations, and global scope pollution.
+3. **Copy Tested Code**: Every code snippet includes one-click clipboard copying and syntax highlighting tested against Python 3.12+.
+
+## Next steps
+
+Ready to dive in? Begin by setting up an isolated development environment in [Getting started](/docs/python/getting-started).
