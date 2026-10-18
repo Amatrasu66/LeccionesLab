@@ -4,8 +4,10 @@
   "pages": [
     "index",
     "getting-started",
-    "---Fundamentals---",
+    "---Foundations---",
     "basics",
+    "---Collections---",
+    "collections",
     "---Technical Reference---",
     "reference"
   ]

@@ -1,7 +1,11 @@
 {
-  "title": "Basics",
+  "title": "Foundations",
   "pages": [
+    "syntax-and-types",
     "variables",
+    "operators-and-expressions",
+    "control-flow",
+    "strings",
     "functions"
   ]
 }

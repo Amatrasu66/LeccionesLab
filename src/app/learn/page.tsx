@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { BookOpen, CheckCircle2, ArrowRight, Code2, Layers, Cpu } from 'lucide-react';
+import { BookOpen, CheckCircle2, ArrowRight, Code2, Layers, Cpu, Clock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 export const metadata = {
@@ -7,32 +7,78 @@ export const metadata = {
   description: 'Structured tutorials and learning pathways for modern developers.',
 };
 
+interface ModuleItem {
+  title: string;
+  url?: string;
+  available: boolean;
+}
+
+interface LearningTrack {
+  title: string;
+  level: string;
+  time: string;
+  description: string;
+  modules: ModuleItem[];
+  status: string;
+}
+
 export default function LearnPage() {
-  const tracks = [
+  const tracks: LearningTrack[] = [
     {
-      title: 'Python 3 Fundamentals',
-      level: 'Beginner to Intermediate',
-      time: '3 hours',
-      description: 'The foundational concepts of modern Python: naming semantics, memory references, dynamic types, execution models, and structural control flow.',
+      title: 'Python Foundations',
+      level: 'Beginner',
+      time: '4 hours',
+      description: 'The foundational concepts of modern Python: naming semantics, memory references, dynamic types, expressions, control flow, strings, and functional execution.',
       modules: [
-        { title: 'Environment & Tooling', url: '/docs/python/getting-started' },
-        { title: 'Variables, Assignment & References', url: '/docs/python/basics/variables' },
-        { title: 'Functions, Signatures & Scopes', url: '/docs/python/basics/functions' },
-        { title: 'Standard Built-in Functions', url: '/docs/python/reference/built-in-functions' },
+        { title: 'Environment & Tooling', url: '/docs/python/getting-started', available: true },
+        { title: 'Syntax & Primitive Types', url: '/docs/python/basics/syntax-and-types', available: true },
+        { title: 'Variables, Assignment & References', url: '/docs/python/basics/variables', available: true },
+        { title: 'Operators & Expressions', url: '/docs/python/basics/operators-and-expressions', available: true },
+        { title: 'Control Flow & Pattern Matching', url: '/docs/python/basics/control-flow', available: true },
+        { title: 'Strings & Text Processing', url: '/docs/python/basics/strings', available: true },
+        { title: 'Functions, Signatures & Scopes', url: '/docs/python/basics/functions', available: true },
+        { title: 'Standard Built-in Functions', url: '/docs/python/reference/built-in-functions', available: true },
       ],
       status: 'Active',
     },
     {
-      title: 'Data Structures & Algorithms in Python',
+      title: 'Strings & Collections',
+      level: 'Beginner to Intermediate',
+      time: '3.5 hours',
+      description: 'Master memory models, algorithmic complexities, contiguous pointer arrays, immutable records, hash tables, and unique mathematical sets.',
+      modules: [
+        { title: 'Lists & Dynamic Arrays', url: '/docs/python/collections/lists', available: true },
+        { title: 'Tuples, Immutability & Unpacking', url: '/docs/python/collections/tuples', available: true },
+        { title: 'Dictionaries & Hash Tables', url: '/docs/python/collections/dictionaries', available: true },
+        { title: 'Sets & Mathematical Operations', url: '/docs/python/collections/sets', available: true },
+      ],
+      status: 'Active',
+    },
+    {
+      title: 'Intermediate Language Features',
       level: 'Intermediate',
       time: '4 hours',
-      description: 'Understanding memory overhead, amortized complexities, list comprehensions, generator pipelines, and dictionary hash tables.',
+      description: 'First-class functions, closures, iterators, generator expressions, decorators, and exception hierarchies.',
       modules: [
-        { title: 'Lists, Tuples & Memory Models', url: '/docs/python' },
-        { title: 'Hash Maps & Set Lookups', url: '/docs/python' },
-        { title: 'Iterators, Generators & Yield', url: '/docs/python' },
+        { title: 'Closures & Nested Functions', available: false },
+        { title: 'Iterators & Generator Functions', available: false },
+        { title: 'Function & Class Decorators', available: false },
+        { title: 'Exception Hierarchies & Context Managers', available: false },
       ],
       status: 'In Development',
+    },
+    {
+      title: 'Object-Oriented Programming',
+      level: 'Intermediate to Advanced',
+      time: '5 hours',
+      description: 'Class design, Method Resolution Order (MRO), dunder methods, abstract base classes, protocols, and dataclasses.',
+      modules: [
+        { title: 'Classes & Instance Attributes', available: false },
+        { title: 'Inheritance, super() & MRO', available: false },
+        { title: 'Dunder Methods & Operator Overloading', available: false },
+        { title: 'Protocols & Abstract Base Classes', available: false },
+      ],
+      status: 'Planned',
     },
     {
       title: 'Modern Asynchronous Python (asyncio)',
@@ -40,9 +86,9 @@ export default function LearnPage() {
       time: '5 hours',
       description: 'Event loops, coroutines, tasks, cooperative multitasking, and asynchronous networking patterns.',
       modules: [
-        { title: 'Event Loop Foundations', url: '/docs/python' },
-        { title: 'Tasks vs Futures', url: '/docs/python' },
-        { title: 'High-Throughput IO Bound Services', url: '/docs/python' },
+        { title: 'Event Loop Foundations', available: false },
+        { title: 'Tasks vs Futures', available: false },
+        { title: 'High-Throughput IO Bound Services', available: false },
       ],
       status: 'Planned',
     },
@@ -88,10 +134,15 @@ export default function LearnPage() {
                   {track.title}
                 </h2>
               </div>
-              {track.status === 'Active' && (
-                <Button href="/docs/python" variant="primary" size="default">
+              {track.status === 'Active' ? (
+                <Button href={track.modules[0].url || '/docs/python'} variant="primary" size="default">
                   Start Track
                 </Button>
+              ) : (
+                <span className="text-xs text-[#8B8495] flex items-center gap-1.5 self-start sm:self-center">
+                  <Clock className="h-3.5 w-3.5" />
+                  {track.status}
+                </span>
               )}
             </div>
 
@@ -104,19 +155,38 @@ export default function LearnPage() {
                 Curriculum Modules
               </h3>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {track.modules.map((mod, idx) => (
-                  <Link
-                    key={mod.title}
-                    href={mod.url}
-                    className="flex items-center gap-3 rounded-[6px] border border-[#302B36] bg-[#1B1820] p-3 text-xs text-[#F4F0F7] hover:border-[#8B8495]/40 hover:bg-[#24202A] transition-colors"
-                  >
-                    <span className="font-mono text-[#8B8495] text-[11px]">
-                      {String(idx + 1).padStart(2, '0')}.
-                    </span>
-                    <span className="font-medium truncate">{mod.title}</span>
-                    <ArrowRight className="h-3.5 w-3.5 ml-auto text-[#8B8495] shrink-0" />
-                  </Link>
-                ))}
+                {track.modules.map((mod, idx) => {
+                  if (mod.available && mod.url) {
+                    return (
+                      <Link
+                        key={mod.title}
+                        href={mod.url}
+                        className="flex items-center gap-3 rounded-[6px] border border-[#302B36] bg-[#1B1820] p-3 text-xs text-[#F4F0F7] hover:border-[#8B8495]/40 hover:bg-[#24202A] transition-colors"
+                      >
+                        <span className="font-mono text-[#8B8495] text-[11px]">
+                          {String(idx + 1).padStart(2, '0')}.
+                        </span>
+                        <span className="font-medium truncate">{mod.title}</span>
+                        <ArrowRight className="h-3.5 w-3.5 ml-auto text-[#8B8495] shrink-0" />
+                      </Link>
+                    );
+                  }
+
+                  return (
+                    <div
+                      key={mod.title}
+                      className="flex items-center gap-3 rounded-[6px] border border-[#302B36]/60 bg-[#151319] p-3 text-xs text-[#8B8495]"
+                    >
+                      <span className="font-mono text-[#8B8495]/60 text-[11px]">
+                        {String(idx + 1).padStart(2, '0')}.
+                      </span>
+                      <span className="truncate">{mod.title}</span>
+                      <span className="ml-auto text-[10px] uppercase tracking-wider text-[#8B8495]/70">
+                        Upcoming
+                      </span>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           </div>

@@ -5,6 +5,7 @@ import defaultMdxComponents from 'fumadocs-ui/mdx';
 import { Callout } from '@/components/ui/callout';
 import { CodeBlock } from '@/components/ui/code-block';
 import { CopyPageButton } from '@/components/docs/copy-page-button';
+import { ArticlePager } from '@/components/docs/article-pager';
 
 export default async function Page(props: {
   params: Promise<{ slug?: string[] }>;
@@ -21,11 +22,25 @@ export default async function Page(props: {
   let kicker = 'DOCUMENTATION';
   if (slugPath.includes('reference')) {
     kicker = 'TECHNICAL REFERENCE';
+  } else if (slugPath.includes('collections')) {
+    kicker = 'STRINGS & COLLECTIONS';
   } else if (slugPath.includes('basics')) {
-    kicker = 'PYTHON FUNDAMENTALS';
+    kicker = 'PYTHON FOUNDATIONS';
   } else if (slugPath.includes('getting-started') || slugPath === 'python') {
     kicker = 'GETTING STARTED';
   }
+
+  // Calculate previous and next article navigation dynamically
+  const pages = source.getPages();
+  const currentIndex = pages.findIndex((p) => p.url === page.url);
+  const previous =
+    currentIndex > 0
+      ? { title: pages[currentIndex - 1].data.title, url: pages[currentIndex - 1].url }
+      : null;
+  const next =
+    currentIndex >= 0 && currentIndex < pages.length - 1
+      ? { title: pages[currentIndex + 1].data.title, url: pages[currentIndex + 1].url }
+      : null;
 
   return (
     <DocsPage
@@ -73,6 +88,9 @@ export default async function Page(props: {
             }}
           />
         </DocsBody>
+
+        {/* Contextual Previous/Next Navigation */}
+        <ArticlePager previous={previous} next={next} />
       </div>
     </DocsPage>
   );

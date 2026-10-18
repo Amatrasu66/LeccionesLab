@@ -1,0 +1,225 @@
+---
+title: Dictionaries & Hash Tables
+description: Deep dive into Python dictionaries, hash table internals, O(1) key lookups, view objects, dictionary comprehensions, and merge operators.
+---
+
+A Python dictionary (`dict`) is a mutable mapping structure that associates hashable keys with arbitrary value objects. In Python 3.7+, dictionaries are guaranteed to maintain **insertion order**. Under the hood, dictionaries are implemented as highly optimized hash tables that deliver average $O(1)$ time complexity for insertions, updates, and lookups.
+
+## Learning Objectives
+
+By completing this lesson, you will be able to:
+- Explain Python's compact hash table architecture and insertion-order guarantee.
+- Apply hashability constraints when selecting dictionary keys.
+- Safely access and manipulate values using `.get()`, `.setdefault()`, and `.pop()`.
+- Iterate efficiently through dictionary view objects (`.keys()`, `.values()`, `.items()`).
+- Merge dictionaries using Python 3.9+ union operators (`|` and `|=`).
+- Construct concise, readable **dictionary comprehensions**.
+
+## Prerequisites
+
+- [Tuples, Immutability & Unpacking](/docs/python/collections/tuples)
+- [Control Flow & Pattern Matching](/docs/python/basics/control-flow)
+
+## 1. Dictionary Architecture & Hash Table Internals
+
+In Python, a dictionary maps keys to values using **hashing**:
+1. When you insert a key `d[key] = value`, Python computes `hash(key)`.
+2. The hash determines an index in a sparse array.
+3. The sparse array points to a dense array storing `[hash, key_ptr, value_ptr]` in insertion order.
+
+```text
+  Compact Dictionary Layout (Python 3.7+)
+  Indices Table (Sparse): [ -1 |  0 | -1 |  1 | -1 ]
+                                  │         │
+                                  ▼         ▼
+  Entries Table (Dense):   0: [hash_a, "user_id", 1042]
+                           1: [hash_b, "role",    "admin"]
+```
+
+### The Hashability Requirement
+
+Any object used as a dictionary key **must be hashable**:
+- It must have a hash value that remains constant across its lifetime (implements `__hash__()`).
+- It must be comparable to other objects for equality (implements `__eq__()`).
+- Built-in immutable types (`str`, `int`, `float`, `tuple`, `frozenset`) are hashable.
+- Mutable types (`list`, `dict`, `set`) are unhashable and cannot be dictionary keys.
+
+## 2. Basic CRUD Operations & Safe Access
+
+```python
+# Initialization
+user = {
+    "id": 1042,
+    "username": "simran",
+    "role": "engineer",
+    "verified": True,
+}
+
+# 1. Direct Lookup (Raises KeyError if missing!)
+print(user["username"])  # -> simran
+
+# 2. Safe Access with .get(key, default=None)
+avatar = user.get("avatar_url", "https://assets.leccioneslab.dev/default.png")
+print(avatar)  # -> fallback default
+
+# 3. Insertion and Update
+user["last_login"] = "2026-10-18T10:00:00Z"
+user.update({"role": "senior_engineer", "team": "core"})
+
+# 4. Deletion
+removed_role = user.pop("role")
+print(f"Removed role: {removed_role}")  # -> Removed role: senior_engineer
+```
+
+### The `.setdefault()` Method
+
+`.setdefault(key, default)` returns the value if `key` exists; otherwise, it inserts `key` with `default` and returns it:
+
+```python
+# Grouping words by their first letter
+words = ["python", "pipeline", "performance", "rust", "redis"]
+grouped = {}
+
+for word in words:
+    grouped.setdefault(word[0], []).append(word)
+
+print(grouped)
+# -> {'p': ['python', 'pipeline', 'performance'], 'r': ['rust', 'redis']}
+```
+
+## 3. Iterating with View Objects
+
+The methods `.keys()`, `.values()`, and `.items()` return dynamic **dictionary view objects**. Views reflect subsequent modifications to the underlying dictionary immediately:
+
+```python
+metrics = {"cpu_pct": 45.2, "mem_mb": 1024, "threads": 8}
+
+# Iterate key-value pairs simultaneously:
+for key, value in metrics.items():
+    print(f"Metric {key} -> {value}")
+
+# Keys and items views support mathematical set operations:
+shared_keys = metrics.keys() & {"cpu_pct", "disk_pct"}
+print(shared_keys)  # -> {'cpu_pct'}
+```
+
+## 4. Modern Dictionary Merging (Python 3.9+ PEP 584)
+
+Python 3.9 introduced the binary union operator `|` and in-place update operator `|=` for dictionaries:
+
+```python
+defaults = {"theme": "dark", "font_size": 14, "auto_save": True}
+user_prefs = {"font_size": 16, "telemetry": False}
+
+# Merges both dicts; keys on the right take precedence
+merged_config = defaults | user_prefs
+print(merged_config)
+# -> {'theme': 'dark', 'font_size': 16, 'auto_save': True, 'telemetry': False}
+```
+
+## 5. Dictionary Comprehensions
+
+Dictionary comprehensions construct new dictionaries by iterating over sequences:
+
+```text
+{key_expr: value_expr for item in iterable if condition}
+```
+
+```python
+# Inverting a unique dictionary (values become keys)
+country_codes = {"US": 1, "GB": 44, "JP": 81, "DE": 49}
+codes_to_country = {code: country for country, code in country_codes.items()}
+print(codes_to_country[81])  # -> JP
+
+# Filtering and mapping data
+scores = {"alice": 95, "bob": 68, "carol": 88, "david": 59}
+passing_grades = {name: score for name, score in scores.items() if score >= 70}
+print(passing_grades)  # -> {'alice': 95, 'carol': 88}
+```
+
+## 6. Time Complexity Guarantees
+
+| Operation | Python Syntax | Average Time Complexity | Worst Case |
+|---|---|---|---|
+| Key Lookup | `d[key]` | `O(1)` | `O(N)` (Hash collisions) |
+| Insert / Update | `d[key] = val` | `O(1)` | `O(N)` (Resizing) |
+| Key Deletion | `del d[key]` | `O(1)` | `O(N)` |
+| Membership Test | `key in d` | `O(1)` | `O(N)` |
+| Iteration | `for k in d` | `O(N)` | `O(N)` |
+
+Because Python's siphash algorithm resists adversarial collisions, the worst-case `O(N)` is vanishingly rare in practice.
+
+## Common Mistakes & Debugging
+
+### Mistake 1: Relying on direct key lookup without error handling
+```python
+# ❌ INCORRECT: Raises KeyError if 'address' is missing
+state = user["address"]["state"]
+
+# ✅ CORRECT: Use chained .get() or walrus pattern
+if address := user.get("address"):
+    state = address.get("state")
+```
+
+### Mistake 2: Modifying dictionary size during iteration
+Mutating keys while iterating over `d` or `d.keys()` raises `RuntimeError: dictionary changed size during iteration`.
+```python
+# ❌ INCORRECT:
+for k in d:
+    if condition:
+        del d[k]
+
+# ✅ CORRECT: Iterate over a list snapshot
+for k in list(d.keys()):
+    if condition:
+        del d[k]
+```
+
+## Practice Exercises
+
+### Exercise 1 (Beginner): Frequency Counter
+Write a function `character_frequency(text: str) -> dict[str, int]` that returns a dictionary counting the occurrences of every character in `text`, ignoring spaces.
+
+### Exercise 2 (Intermediate): Nested Configuration Resolver
+Write a function `resolve_config(base: dict, overrides: dict) -> dict` that recursively merges two nested dictionaries, giving preference to values in `overrides`.
+
+## Exercise Solutions
+
+```python
+# Solution 1:
+def character_frequency(text: str) -> dict[str, int]:
+    freq = {}
+    for char in text:
+        if not char.isspace():
+            freq[char] = freq.get(char, 0) + 1
+    return freq
+
+print(character_frequency("lecciones lab"))
+# -> {'l': 2, 'e': 2, 'c': 2, 'i': 1, 'o': 1, 'n': 1, 's': 1, 'a': 1, 'b': 1}
+
+# Solution 2:
+def resolve_config(base: dict, overrides: dict) -> dict:
+    merged = base.copy()
+    for key, value in overrides.items():
+        if key in merged and isinstance(merged[key], dict) and isinstance(value, dict):
+            merged[key] = resolve_config(merged[key], value)
+        else:
+            merged[key] = value
+    return merged
+
+base_settings = {"api": {"port": 8000, "debug": True}, "db": "sqlite"}
+prod_override = {"api": {"debug": False}, "db": "postgres"}
+print(resolve_config(base_settings, prod_override))
+# -> {'api': {'port': 8000, 'debug': False}, 'db': 'postgres'}
+```
+
+## Summary
+
+- Dictionaries are compact, insertion-ordered hash tables mapping hashable keys to arbitrary objects.
+- Use `.get(key, default)` and `.setdefault(key, default)` for defensive lookups.
+- Python 3.9+ supports union merge syntax: `d1 | d2`.
+- Key lookups, insertions, and deletions execute in average $O(1)$ time.
+
+## Next Step
+
+Explore unordered collections of unique elements in [Sets & Frozensets](/docs/python/collections/sets).

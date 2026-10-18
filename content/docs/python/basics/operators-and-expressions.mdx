@@ -1,0 +1,260 @@
+---
+title: Operators & Expressions
+description: Comprehensive guide to Python arithmetic, comparison, logical, identity, membership, bitwise, and walrus operators with evaluation order.
+---
+
+Operators are symbolic tokens that direct Python's evaluation engine to compute transformations, compare data structures, and manage control logic. Understanding operator semantics—including floor division, chained comparisons, and short-circuit evaluation—is critical for writing bug-free algorithms.
+
+## Learning Objectives
+
+By completing this lesson, you will be able to:
+- Distinguish between true division (`/`) and floor division (`//`).
+- Leverage chained comparisons (`0 <= score <= 100`) for concise boundary validation.
+- Master short-circuit evaluation with `and` and `or`.
+- Differentiate between object identity (`is`) and equality (`==`).
+- Use the walrus operator (`:=`) for assignment expressions in Python 3.8+.
+- Predict evaluation order using the operator precedence hierarchy.
+
+## Prerequisites
+
+- [Syntax & Primitive Data Types](/docs/python/basics/syntax-and-types)
+- [Variables & Assignment](/docs/python/basics/variables)
+
+## 1. Arithmetic Operators
+
+Python supports seven primary arithmetic operators:
+
+| Operator | Name | Description | Example | Result |
+|---|---|---|---|---|
+| `+` | Addition | Sum of operands | `15 + 4` | `19` |
+| `-` | Subtraction | Difference of operands | `15 - 4` | `11` |
+| `*` | Multiplication | Product of operands | `15 * 4` | `60` |
+| `/` | True Division | Quotient as a `float` | `15 / 4` | `3.75` |
+| `//` | Floor Division | Quotient rounded down to nearest integer | `15 // 4` | `3` |
+| `%` | Modulo | Remainder after division | `15 % 4` | `3` |
+| `**` | Exponentiation | Base raised to the power of exponent | `2 ** 8` | `256` |
+
+### True Division vs. Floor Division
+
+In Python 3, `/` always yields a `float`, even when dividing evenly:
+
+```python
+print(8 / 2)    # -> 4.0 (float)
+print(8 // 2)   # -> 4 (int)
+
+# Floor division rounds down toward negative infinity:
+print(7 // 2)   # -> 3
+print(-7 // 2)  # -> -4 (not -3!)
+```
+
+Modulo with negative numbers also adheres to the mathematical floor definition: `r = a - b * (a // b)`:
+
+```python
+print(-7 % 2)   # -> 1
+```
+
+## 2. Comparison Operators & Chaining
+
+Comparison operators evaluate expressions and return a `bool` (`True` or `False`):
+
+```python
+a, b = 10, 20
+print(a == b)  # False (equal to)
+print(a != b)  # True (not equal to)
+print(a < b)   # True (less than)
+print(a <= b)  # True (less than or equal to)
+print(a > b)   # False (greater than)
+print(a >= b)  # False (greater than or equal to)
+```
+
+### Chained Comparisons
+
+Python natively supports mathematical chained comparison syntax:
+
+```python
+age = 25
+# In Python, you can write:
+if 18 <= age < 65:
+    print("Working age adult")
+
+# Equivalent to: (18 <= age) and (age < 65), but evaluates 'age' only once!
+```
+
+## 3. Logical Operators & Short-Circuit Evaluation
+
+Python provides three boolean logical operators: `and`, `or`, and `not`.
+
+### Short-Circuit Evaluation
+
+Logical expressions evaluate from left to right and stop evaluation as soon as the outcome is determined:
+
+- **`expr1 and expr2`**: If `expr1` is falsy, Python returns `expr1` immediately without evaluating `expr2`. If `expr1` is truthy, it returns `expr2`.
+- **`expr1 or expr2`**: If `expr1` is truthy, Python returns `expr1` immediately without evaluating `expr2`. If `expr1` is falsy, it returns `expr2`.
+
+```python
+# Guard pattern preventing ZeroDivisionError
+count = 0
+total = 100
+
+# count != 0 evaluates to False, so the right side is NEVER evaluated!
+if count != 0 and (total / count) > 10:
+    print("High average")
+else:
+    print("Safe: division by zero avoided")
+```
+
+Logical operators return the actual operand value, not necessarily a boolean:
+
+```python
+user_input = ""
+default_name = "Guest"
+active_name = user_input or default_name
+print(active_name)  # -> Guest
+```
+
+## 4. Identity (`is`) vs. Membership (`in`)
+
+### Identity Operators: `is` and `is not`
+Test whether two identifiers point to the identical memory address (`id(a) == id(b)`):
+
+```python
+x = [1, 2]
+y = [1, 2]
+print(x == y)      # True (equal content)
+print(x is y)      # False (distinct heap objects)
+print(x is not y)  # True
+```
+
+### Membership Operators: `in` and `not in`
+Test whether an element exists within a sequence or collection:
+
+```python
+frameworks = ["FastAPI", "Django", "Flask"]
+print("FastAPI" in frameworks)       # True
+print("Express" not in frameworks)   # True
+
+payload = {"status": "ok", "code": 200}
+print("status" in payload)           # True (checks dictionary keys)
+```
+
+## 5. The Walrus Operator (`:=`)
+
+Introduced in Python 3.8 (PEP 572), the **assignment expression operator** (`:=`) allows assigning values to variables inside expressions:
+
+```python
+# Without walrus:
+data = "LeccionesLab"
+n = len(data)
+if n > 5:
+    print(f"Long string of length {n}")
+
+# With walrus operator:
+if (length := len(data)) > 5:
+    print(f"Long string of length {length}")
+```
+
+This is especially powerful when reading data in loops until an empty sentinel is reached.
+
+## 6. Bitwise Operators
+
+Bitwise operators operate on binary bit representations of integers:
+
+| Operator | Name | Example (`a=5: 0b0101`, `b=3: 0b0011`) | Result |
+|---|---|---|---|
+| `&` | Bitwise AND | `5 & 3` (`0b0001`) | `1` |
+| `\|` | Bitwise OR | `5 \| 3` (`0b0111`) | `7` |
+| `^` | Bitwise XOR | `5 ^ 3` (`0b0110`) | `6` |
+| `~` | Bitwise NOT | `~5` (`-(5 + 1)`) | `-6` |
+| `<<` | Left Shift | `5 << 1` (`0b1010`) | `10` |
+| `>>` | Right Shift | `5 >> 1` (`0b0010`) | `2` |
+
+## Operator Precedence Hierarchy
+
+When evaluating expressions without parentheses, Python follows strict precedence (from highest to lowest):
+
+1. `()` (Parentheses)
+2. `**` (Exponentiation)
+3. `+x`, `-x`, `~x` (Unary positive, negative, bitwise NOT)
+4. `*`, `/`, `//`, `%` (Multiplication, divisions, modulo)
+5. `+`, `-` (Addition, subtraction)
+6. `<<`, `>>` (Bitwise shifts)
+7. `&` (Bitwise AND)
+8. `^` (Bitwise XOR)
+9. `|` (Bitwise OR)
+10. `==`, `!=`, `<`, `<=`, `>`, `>=`, `is`, `is not`, `in`, `not in` (Comparisons)
+11. `not` (Logical NOT)
+12. `and` (Logical AND)
+13. `or` (Logical OR)
+14. `:=` (Walrus assignment)
+
+```python
+# Example:
+result = 10 + 2 * 3 ** 2
+# 1. 3 ** 2 = 9
+# 2. 2 * 9  = 18
+# 3. 10 + 18 = 28
+print(result)  # -> 28
+```
+
+## Common Mistakes & Debugging
+
+### Mistake 1: Comparing float identity with `is`
+Never use `is` to compare numbers or strings:
+```python
+# ❌ INCORRECT: Relies on CPython small integer caching
+a = 1000
+b = 1000
+print(a is b)  # May be False!
+
+# ✅ CORRECT: Use == for value comparisons
+print(a == b)  # Always True
+```
+
+### Mistake 2: Missing parentheses with bitwise operators
+Bitwise operators have lower precedence than arithmetic comparisons:
+```python
+# ❌ WRONG: evaluates as 5 & (3 == 1) -> 5 & False -> 0
+result = 5 & 3 == 1
+
+# ✅ CORRECT:
+result = (5 & 3) == 1
+```
+
+## Practice Exercises
+
+### Exercise 1 (Beginner): Leap Year Validator
+A year is a leap year if it is divisible by 4, except end-of-century years, which must also be divisible by 400. Write a boolean expression using `%`, `==`, `and`, and `or` to verify whether `year = 2024` is a leap year.
+
+### Exercise 2 (Intermediate): Stream Processor with Walrus
+Simulate processing lines from a buffer until an empty line `""` is encountered using `while (line := buffer.pop(0)):`.
+
+## Exercise Solutions
+
+```python
+# Solution 1:
+year = 2024
+is_leap = (year % 4 == 0 and year % 100 != 0) or (year % 400 == 0)
+print(f"Is {year} a leap year? {is_leap}")  # -> True
+
+# Solution 2:
+buffer = ["HTTP/1.1 200 OK", "Content-Type: text/plain", "", "Body payload..."]
+headers = []
+
+while (line := buffer.pop(0)) != "":
+    headers.append(line)
+
+print("Parsed headers:", headers)
+# -> Parsed headers: ['HTTP/1.1 200 OK', 'Content-Type: text/plain']
+```
+
+## Summary
+
+- `/` is true division (`float`); `//` is floor division (`int`).
+- Python supports chained comparisons: `min_val <= x <= max_val`.
+- Logical `and` / `or` short-circuit and return the operand value.
+- `is` tests memory address; `==` tests semantic value equality.
+- Use `:=` (walrus) to bind variables inside conditional expressions.
+
+## Next Step
+
+Learn how to control execution paths with conditionals and iterative loops in [Control Flow](/docs/python/basics/control-flow).

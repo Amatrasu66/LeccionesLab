@@ -1,0 +1,229 @@
+---
+title: Lists & Dynamic Arrays
+description: Comprehensive guide to Python lists, internal dynamic array memory models, in-place mutation, Big-O time complexity, and list comprehensions.
+---
+
+A Python list is a mutable, ordered sequence of heterogeneous objects. Under the hood in CPython, a list is implemented not as a linked list, but as a **dynamically resizing array of object pointers**. Understanding this memory architecture is the key to predicting execution performance, memory overhead, and algorithmic complexity.
+
+## Learning Objectives
+
+By completing this lesson, you will be able to:
+- Explain CPython's dynamic array memory model and over-allocation strategy.
+- Modify lists in-place using `.append()`, `.extend()`, `.insert()`, `.pop()`, and `.remove()`.
+- Perform slice assignments to insert, replace, or delete ranges.
+- Evaluate the Big-O time complexity of common list operations.
+- Construct performant, readable **list comprehensions**.
+- Sort collections with the Timsort algorithm using `.sort()` and `sorted()`.
+
+## Prerequisites
+
+- [Variables & Assignment](/docs/python/basics/variables)
+- [Control Flow & Pattern Matching](/docs/python/basics/control-flow)
+
+## 1. CPython List Architecture & Memory Model
+
+In CPython, a list is represented by a `PyListObject` struct containing:
+1. `ob_size`: The current count of items in the list.
+2. `allocated`: The allocated capacity of the underlying pointer array.
+3. `ob_item`: A contiguous array of memory pointers, where each pointer refers to a `PyObject` on the heap.
+
+```text
+  PyListObject in Memory
+  ┌───────────────┬───────────────────────────────────────────┐
+  │  size = 3     │  allocated = 6 (over-allocated buffer)    │
+  └───────┬───────┴─────────────────────┬─────────────────────┘
+          │                             │
+          ▼                             ▼
+  Pointer Array: [ ptr0  | ptr1  | ptr2  | NULL  | NULL  | NULL  ]
+                     │       │       │
+                     ▼       ▼       ▼
+    Heap Objects:  ["dev",   42,    True]
+```
+
+### Amortized O(1) Growth
+
+When a list runs out of allocated slots, Python reallocates a larger buffer according to an over-allocation pattern (`~1.125 * size + 6`).
+Because reallocations occur infrequently, appending to the end of a list has an **amortized time complexity of `O(1)`**.
+
+## 2. In-Place Mutation Operations
+
+Lists can be mutated in place without changing the list's identity (`id`):
+
+```python
+languages = ["Python", "JavaScript"]
+
+# 1. append(item) - Adds single item to end in O(1) amortized
+languages.append("Rust")
+print(languages)  # -> ['Python', 'JavaScript', 'Rust']
+
+# 2. extend(iterable) - Appends multiple items in O(k)
+languages.extend(["Go", "Kotlin"])
+print(languages)  # -> ['Python', 'JavaScript', 'Rust', 'Go', 'Kotlin']
+
+# 3. insert(index, item) - Inserts at index in O(N) because subsequent pointers shift
+languages.insert(0, "C++")
+print(languages)  # -> ['C++', 'Python', 'JavaScript', 'Rust', 'Go', 'Kotlin']
+
+# 4. pop(index=-1) - Removes and returns item. End is O(1); start/middle is O(N)
+last_lang = languages.pop()
+print(f"Popped: {last_lang}")  # -> Popped: Kotlin
+
+# 5. remove(value) - Searches and deletes first matching value in O(N)
+languages.remove("JavaScript")
+print(languages)  # -> ['C++', 'Python', 'Rust', 'Go']
+```
+
+## 3. Slice Assignment
+
+Python permits assigning iterables directly to slice ranges, enabling multi-element replacements, expansions, and deletions:
+
+```python
+numbers = [10, 20, 30, 40, 50]
+
+# Replace elements at indices 1 and 2
+numbers[1:3] = [200, 300]
+print(numbers)  # -> [10, 200, 300, 400, 500]
+
+# Insert elements without removing any (empty slice)
+numbers[1:1] = [15, 18]
+print(numbers)  # -> [10, 15, 18, 200, 300, 400, 500]
+
+# Delete a slice using del or empty list assignment
+del numbers[3:5]
+print(numbers)  # -> [10, 15, 18, 400, 500]
+```
+
+## 4. Time Complexity of List Operations
+
+Choosing the right collection requires knowing operation costs:
+
+| Operation | Python Syntax | Time Complexity | Notes |
+|---|---|---|---|
+| Index access | `items[i]` | `O(1)` | Direct pointer arithmetic offset |
+| Index assignment | `items[i] = val` | `O(1)` | Overwrites pointer |
+| Append to end | `items.append(val)` | `O(1)` amortized | Fast, infrequent reallocations |
+| Pop from end | `items.pop()` | `O(1)` | Decrements `ob_size` |
+| Insert at start/mid | `items.insert(0, val)` | `O(N)` | Must shift all subsequent pointers |
+| Delete from start/mid| `del items[0]` | `O(N)` | Must shift all subsequent pointers |
+| Value lookup | `val in items` | `O(N)` | Linear scan comparison |
+| Slice extraction | `items[a:b]` | `O(k)` | Allocates new list of length `k` |
+| In-place Sort | `items.sort()` | `O(N log N)` | Timsort adaptive merge sort |
+
+> **Performance Tip**: If your application requires frequent insertions or deletions at the start of a sequence, use `collections.deque` (`O(1)` push/pop at both ends) instead of a `list`.
+
+## 5. List Comprehensions
+
+List comprehensions provide an expressive syntax for transforming and filtering iterables into new lists:
+
+```text
+[expression for item in iterable if condition]
+```
+
+```python
+# Transform and filter squares of even numbers
+numbers = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+even_squares = [n ** 2 for n in numbers if n % 2 == 0]
+print(even_squares)  # -> [4, 16, 36, 64, 100]
+
+# Flattening a 2D matrix
+matrix = [
+    [1, 2, 3],
+    [4, 5, 6],
+    [7, 8, 9]
+]
+flattened = [val for row in matrix for val in row]
+print(flattened)  # -> [1, 2, 3, 4, 5, 6, 7, 8, 9]
+```
+
+## 6. Sorting with Timsort (`.sort()` vs. `sorted()`)
+
+- `list.sort()` sorts the list **in-place** and returns `None`.
+- `sorted(iterable)` returns a **new sorted list**, leaving the original sequence unchanged.
+- Both take optional `key` and `reverse` arguments:
+
+```python
+users = [
+    {"username": "carol", "score": 88},
+    {"username": "alice", "score": 95},
+    {"username": "bob", "score": 92},
+]
+
+# Sort by score descending using key function
+users.sort(key=lambda u: u["score"], reverse=True)
+print(users[0]["username"])  # -> alice
+```
+
+## Common Mistakes & Debugging
+
+### Mistake 1: `.sort()` returning `None`
+`list.sort()` modifies in place and returns `None`. Do not assign its return value:
+```python
+# ❌ INCORRECT: result becomes None!
+data = [3, 1, 2]
+data = data.sort()
+print(data)  # -> None
+
+# ✅ CORRECT:
+data = [3, 1, 2]
+data.sort()  # data is now [1, 2, 3]
+```
+
+### Mistake 2: Multiplying a list containing lists
+Multiplying a list containing a mutable inner list copies references, not the lists themselves:
+```python
+# ❌ INCORRECT: All 3 rows point to the exact same list!
+board = [[0] * 3] * 3
+board[0][0] = 1
+print(board)  # -> [[1, 0, 0], [1, 0, 0], [1, 0, 0]] (Mutated all rows!)
+
+# ✅ CORRECT: Use comprehension to instantiate distinct rows
+board = [[0] * 3 for _ in range(3)]
+board[0][0] = 1
+print(board)  # -> [[1, 0, 0], [0, 0, 0], [0, 0, 0]] (Isolated)
+```
+
+## Practice Exercises
+
+### Exercise 1 (Beginner): Deduplicate Preserving Order
+Write a function `dedupe_ordered(items: list) -> list` that removes duplicate elements from a list while preserving their original order of first appearance.
+
+### Exercise 2 (Intermediate): Chunking Array
+Write a function `chunk_list(data: list, chunk_size: int) -> list[list]` that splits a list into sublists of maximum size `chunk_size` using slicing.
+
+## Exercise Solutions
+
+```python
+# Solution 1:
+def dedupe_ordered(items: list) -> list:
+    seen = set()
+    result = []
+    for item in items:
+        if item not in seen:
+            seen.add(item)
+            result.append(item)
+    return result
+
+raw_list = ["a", "b", "a", "c", "b", "d"]
+print(dedupe_ordered(raw_list))  # -> ['a', 'b', 'c', 'd']
+
+# Solution 2:
+def chunk_list(data: list, chunk_size: int) -> list[list]:
+    if chunk_size <= 0:
+        raise ValueError("chunk_size must be positive")
+    return [data[i : i + chunk_size] for i in range(0, len(data), chunk_size)]
+
+print(chunk_list([1, 2, 3, 4, 5, 6, 7, 8], 3))
+# -> [[1, 2, 3], [4, 5, 6], [7, 8]]
+```
+
+## Summary
+
+- Lists are dynamically resizing arrays of object pointers in CPython.
+- Appending and popping at the end is $O(1)$ amortized; inserting or deleting at index 0 is $O(N)$.
+- List comprehensions provide clean syntax for map/filter operations.
+- `list.sort()` sorts in-place; `sorted()` returns a new list.
+- Use list comprehensions when creating multi-dimensional arrays to avoid shared inner references.
+
+## Next Step
+
+Explore fixed-size, hashable sequence containers in [Tuples & Immutability](/docs/python/collections/tuples).

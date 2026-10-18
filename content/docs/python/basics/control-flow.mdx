@@ -1,0 +1,258 @@
+---
+title: Control Flow & Pattern Matching
+description: Master conditional branching (if/elif/else), structural pattern matching (match/case), for/while loops, loop control (break/continue/pass), and the loop else clause.
+---
+
+Control flow structures dictate the order in which statements are executed at runtime based on dynamic state. Python offers clean conditional branching, flexible iteration over sequences, and powerful structural pattern matching introduced in Python 3.10.
+
+## Learning Objectives
+
+By completing this lesson, you will be able to:
+- Write robust branching logic using `if`, `elif`, and `else`.
+- Implement Python 3.10+ **Structural Pattern Matching** (`match`/`case`) with wildcards and guards.
+- Iterate over ranges, sequences, and mappings using `for` loops.
+- Use `while` loops with guaranteed termination conditions.
+- Direct execution flow using `break`, `continue`, and `pass`.
+- Master the idiomatic Python **loop `else` clause** for search operations.
+
+## Prerequisites
+
+- [Syntax & Primitive Data Types](/docs/python/basics/syntax-and-types)
+- [Operators & Expressions](/docs/python/basics/operators-and-expressions)
+
+## 1. Conditional Branching: `if`, `elif`, `else`
+
+Conditionals evaluate boolean expressions in sequential order from top to bottom. As soon as a condition evaluates to a truthy value, its associated block executes, and all remaining branches are skipped:
+
+```python
+http_status = 404
+
+if http_status == 200:
+    action = "Render content"
+elif http_status == 301 or http_status == 302:
+    action = "Follow redirect"
+elif 400 <= http_status < 500:
+    action = "Client error: verify request parameters"
+elif 500 <= http_status < 600:
+    action = "Server error: notify operations"
+else:
+    action = "Unknown response code"
+
+print(f"Action: {action}")
+```
+
+### Ternary Conditional Expression
+
+For simple conditional assignments, Python provides a readable single-line ternary expression (`value_if_true if condition else value_if_false`):
+
+```python
+score = 85
+result = "Pass" if score >= 70 else "Retry"
+print(result)  # -> Pass
+```
+
+## 2. Structural Pattern Matching (`match` / `case`)
+
+Introduced in **Python 3.10 (PEP 634)**, structural pattern matching provides more than a conventional `switch` statement: it decompiles data structures, binds variables, and validates constraints in a single concise syntax:
+
+```python
+def handle_command(command: str | list[str]) -> str:
+    match command:
+        case "quit":
+            return "Terminating session."
+        case ["load", filename]:
+            return f"Loading file: {filename}"
+        case ["save", filename, "--force"]:
+            return f"Forced save to: {filename}"
+        case ["save", filename]:
+            return f"Safe save to: {filename}"
+        case _:
+            return "Command not recognized."
+
+print(handle_command("quit"))                 # -> Terminating session.
+print(handle_command(["load", "model.pt"]))   # -> Loading file: model.pt
+print(handle_command(["save", "db.sql"]))     # -> Safe save to: db.sql
+print(handle_command("unknown"))              # -> Command not recognized.
+```
+
+### Pattern Matching with Guards (`if`)
+
+You can append an `if` guard to a case pattern for fine-grained validation:
+
+```python
+def classify_point(point: tuple[int, int]) -> str:
+    match point:
+        case (0, 0):
+            return "Origin"
+        case (x, y) if x == y:
+            return f"On diagonal line y = x at ({x}, {y})"
+        case (x, 0):
+            return f"On x-axis at {x}"
+        case (0, y):
+            return f"On y-axis at {y}"
+        case (x, y):
+            return f"Arbitrary point ({x}, {y})"
+
+print(classify_point((5, 5)))  # -> On diagonal line y = x at (5, 5)
+```
+
+## 3. Iteration with `for` Loops
+
+The `for` loop in Python is a **for-each** loop: it iterates over items produced by any iterable object (lists, strings, tuples, dictionaries, generator ranges).
+
+### Iterating with `range()`
+
+The built-in `range(start, stop[, step])` generates an arithmetic progression of integers without allocating an in-memory list (memory complexity is $O(1)$):
+
+```python
+# Print even numbers from 2 up to (but excluding) 10:
+for number in range(2, 10, 2):
+    print(number, end=" ")
+# Output: 2 4 6 8
+print()
+```
+
+### Iterating with `enumerate()`
+
+When you need both the index and the item, always prefer `enumerate()` over indexing with `range(len(collection))`:
+
+```python
+languages = ["Python", "TypeScript", "Rust"]
+
+for index, lang in enumerate(languages, start=1):
+    print(f"#{index}: {lang}")
+# Output:
+# #1: Python
+# #2: TypeScript
+# #3: Rust
+```
+
+## 4. Indefinite Iteration: `while` Loops
+
+A `while` loop continues executing as long as its condition expression remains truthy:
+
+```python
+backoff_seconds = 1
+max_retries = 4
+attempt = 0
+
+while attempt < max_retries:
+    attempt += 1
+    print(f"Attempt {attempt}: waiting {backoff_seconds}s...")
+    backoff_seconds *= 2
+```
+
+Ensure that the loop body modifies state so that the condition eventually becomes false to prevent infinite loops.
+
+## 5. Loop Control: `break`, `continue`, `pass`
+
+- `break`: Immediately terminates the innermost loop.
+- `continue`: Skips the rest of the current iteration and jumps to the next iteration.
+- `pass`: A null operation used as a syntactic placeholder where code is syntactically required.
+
+```python
+# Filtering and early termination
+for num in range(1, 10):
+    if num % 2 != 0:
+        continue  # Skip odd numbers
+    if num > 6:
+        break     # Stop when exceeding 6
+    print(num, end=" ")
+# Output: 2 4 6
+print()
+```
+
+## 6. The Loop `else` Clause
+
+Python features a unique syntax construct: an `else` block attached directly to a `for` or `while` loop.
+
+> **Key Rule**: The loop `else` block executes **only if the loop terminates normally without encountering a `break` statement**.
+
+```python
+def find_prime(n: int) -> bool:
+    """Determine if n is prime by trial division."""
+    if n < 2:
+        return False
+    for divisor in range(2, int(n ** 0.5) + 1):
+        if n % divisor == 0:
+            print(f"{n} is composite ({divisor} * {n // divisor})")
+            break  # Found divisor -> skip the else block!
+    else:
+        # Executes ONLY if no break was hit
+        print(f"{n} is prime!")
+        return True
+    return False
+
+find_prime(29)  # -> 29 is prime!
+find_prime(25)  # -> 25 is composite (5 * 5)
+```
+
+This idiom eliminates the need for manual boolean flags (such as `found = False`) when searching collections.
+
+## Common Mistakes & Debugging
+
+### Mistake 1: Off-by-one errors with `range()`
+Remember that `range(start, stop)` is half-open: it includes `start` but excludes `stop`. To iterate through 1 to 5 inclusive, use `range(1, 6)`.
+
+### Mistake 2: Mutating a sequence while iterating over it
+Mutating a list during a `for` loop produces skipped elements or erratic behaviors:
+```python
+# ❌ DANGEROUS: modifying items in-place while iterating
+items = [1, 2, 3, 4]
+for x in items:
+    if x % 2 == 0:
+        items.remove(x)  # Skips elements due to index shifting!
+
+# ✅ CORRECT: Iterate over a copy or use a comprehension
+items = [x for x in items if x % 2 != 0]
+```
+
+## Practice Exercises
+
+### Exercise 1 (Beginner): FizzBuzz
+Print numbers from 1 to 20. For multiples of 3, print `"Fizz"`; for multiples of 5, print `"Buzz"`; for multiples of both, print `"FizzBuzz"`; otherwise print the number.
+
+### Exercise 2 (Intermediate): Linear Search with Loop `else`
+Write a function `search_user(users: list[dict], target_id: int) -> dict | None` that searches for a user by id. Use the loop `else` clause to return `None` when the user is not found.
+
+## Exercise Solutions
+
+```python
+# Solution 1:
+for i in range(1, 21):
+    if i % 15 == 0:
+        print("FizzBuzz", end=" ")
+    elif i % 3 == 0:
+        print("Fizz", end=" ")
+    elif i % 5 == 0:
+        print("Buzz", end=" ")
+    else:
+        print(i, end=" ")
+# Output: 1 2 Fizz 4 Buzz Fizz 7 8 Fizz Buzz 11 Fizz 13 14 FizzBuzz 16 17 Fizz 19 Buzz
+print()
+
+# Solution 2:
+def search_user(users: list[dict], target_id: int) -> dict | None:
+    for user in users:
+        if user.get("id") == target_id:
+            return user
+    else:
+        # Explicit loop else indicating exhaustive search
+        return None
+
+database = [{"id": 1, "name": "Alice"}, {"id": 2, "name": "Bob"}]
+print(search_user(database, 2))     # -> {'id': 2, 'name': 'Bob'}
+print(search_user(database, 999))   # -> None
+```
+
+## Summary
+
+- Use `if`/`elif`/`else` for sequential conditional logic.
+- Use Python 3.10+ `match`/`case` for structural pattern matching over data shapes.
+- Use `for` loops with `enumerate()` and `range()`.
+- Use `break` to exit loops immediately and `continue` to jump to the next iteration.
+- The loop `else` clause executes only if the loop completes without triggering `break`.
+
+## Next Step
+
+Explore text processing, slicing, Unicode handling, and formatting in [Strings & Text Processing](/docs/python/basics/strings).

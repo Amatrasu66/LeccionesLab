@@ -1,0 +1,213 @@
+---
+title: Sets, Frozensets & Mathematical Operations
+description: Master Python sets and frozensets, hash table uniqueness guarantees, O(1) membership testing, and mathematical set theory operations.
+---
+
+A Python set (`set`) is a mutable, unordered collection of unique, hashable elements. Like dictionaries, sets are powered by hash tables under the hood, allowing them to test membership (`x in s`), insert items, and remove elements in average **$O(1)$ constant time**. Python also provides `frozenset`, an immutable and hashable variant.
+
+## Learning Objectives
+
+By completing this lesson, you will be able to:
+- Instantiate sets and avoid the empty dictionary syntax trap (`set()` vs `{}`).
+- Leverage sets for instant $O(1)$ deduplication and membership verification.
+- Perform mathematical set operations: Union (`|`), Intersection (`&`), Difference (`-`), and Symmetric Difference (`^`).
+- Test subset (`<=`) and superset (`>=`) relationships.
+- Use `frozenset` as dictionary keys or nested set members.
+- Construct performant **set comprehensions**.
+
+## Prerequisites
+
+- [Tuples, Immutability & Unpacking](/docs/python/collections/tuples)
+- [Dictionaries & Hash Tables](/docs/python/collections/dictionaries)
+
+## 1. Set Instantiation & Syntax Trap
+
+Sets are defined using curly braces `{}` or the `set()` constructor:
+
+```python
+# Set literal
+primes = {2, 3, 5, 7, 11}
+
+# Automatic deduplication
+colors = {"red", "green", "blue", "red", "green"}
+print(colors)  # -> {'red', 'green', 'blue'}
+
+# CRITICAL SYNTAX TRAP: Empty curly braces {} create a DICT, not a set!
+empty_dict = {}
+empty_set = set()
+
+print(type(empty_dict))  # -> <class 'dict'>
+print(type(empty_set))   # -> <class 'set'>
+```
+
+Elements in a set **must be hashable**:
+```python
+# ❌ TypeError: unhashable type: 'list'
+# invalid_set = {[1, 2], [3, 4]}
+
+# ✅ Valid: Tuples are hashable
+valid_set = {(1, 2), (3, 4)}
+```
+
+## 2. In-Place Mutations & Set Methods
+
+```python
+skills = {"Python", "SQL"}
+
+# Add single element in O(1)
+skills.add("Docker")
+
+# Update with multiple elements in O(k)
+skills.update(["FastAPI", "PostgreSQL"])
+
+# Remove element (raises KeyError if missing)
+skills.remove("SQL")
+
+# Discard element (safe: no error if missing)
+skills.discard("Kubernetes")  # No exception raised
+
+# Pop an arbitrary element (sets are unordered!)
+removed_skill = skills.pop()
+print(f"Popped: {removed_skill}")
+```
+
+## 3. Mathematical Set Theory Operations
+
+Python sets provide both symbolic operators (which require both operands to be sets) and method equivalents (which accept any iterable):
+
+```text
+  Set Operations Diagram
+  ┌──────────────────────────────────────────────────────────┐
+  │  Set A: {1, 2, 3}              Set B: {2, 3, 4}          │
+  │                                                          │
+  │  Union (A | B):               {1, 2, 3, 4}               │
+  │  Intersection (A & B):        {2, 3}                     │
+  │  Difference (A - B):          {1}                        │
+  │  Symmetric Difference (A ^ B):{1, 4}                     │
+  └──────────────────────────────────────────────────────────┘
+```
+
+```python
+a = {1, 2, 3, 4}
+b = {3, 4, 5, 6}
+
+# 1. Union (|): Elements in A, B, or both
+print(a | b)               # -> {1, 2, 3, 4, 5, 6}
+print(a.union([7, 8]))     # -> {1, 2, 3, 4, 7, 8}
+
+# 2. Intersection (&): Elements in both A and B
+print(a & b)               # -> {3, 4}
+
+# 3. Difference (-): Elements in A but NOT in B
+print(a - b)               # -> {1, 2}
+print(b - a)               # -> {5, 6}
+
+# 4. Symmetric Difference (^): Elements in either A or B, but NOT both
+print(a ^ b)               # -> {1, 2, 5, 6}
+```
+
+### Relational Comparisons (Subsets and Supersets)
+
+```python
+small = {1, 2}
+large = {1, 2, 3, 4}
+
+print(small.issubset(large))   # True (or small <= large)
+print(large.issuperset(small)) # True (or large >= small)
+print(small.isdisjoint({8, 9})) # True (no shared elements)
+```
+
+## 4. The Immutable `frozenset`
+
+Standard sets are mutable and unhashable, meaning they cannot be used as dictionary keys or stored inside other sets. The `frozenset` type solves this constraint:
+
+```python
+# Fixed permission groups as dictionary keys
+role_permissions = {
+    frozenset(["read", "write"]): "Editor",
+    frozenset(["read"]): "Viewer",
+    frozenset(["read", "write", "delete", "admin"]): "Administrator",
+}
+
+user_perms = frozenset(["write", "read"])
+print(role_permissions[user_perms])  # -> Editor
+```
+
+## 5. Set Comprehensions
+
+Set comprehensions construct sets using mathematical builder notation:
+
+```text
+{expr for item in iterable if condition}
+```
+
+```python
+# Extract unique file extensions from a list of filenames
+filenames = ["app.py", "index.html", "script.py", "style.css", "main.py"]
+extensions = {name.split(".")[-1] for name in filenames}
+print(extensions)  # -> {'html', 'css', 'py'}
+```
+
+## 6. Time Complexity & Big-O Guarantees
+
+| Operation | Python Syntax | Average Time Complexity | Worst Case |
+|---|---|---|---|
+| Membership Test | `item in s` | `O(1)` | `O(N)` (Hash collision) |
+| Add Element | `s.add(item)` | `O(1)` | `O(N)` |
+| Remove Element | `s.remove(item)` | `O(1)` | `O(N)` |
+| Union | `s1 \| s2` | `O(N1 + N2)` | `O(N1 + N2)` |
+| Intersection | `s1 & s2` | `O(min(N1, N2))` | `O(min(N1, N2))` |
+| Difference | `s1 - s2` | `O(N1)` | `O(N1)` |
+
+> **Algorithmic Rule**: Always convert sequences to sets when performing frequent `item in collection` lookups in algorithms. Searching a list with 100,000 items takes `O(N)` steps; searching a set takes `O(1)` constant time.
+
+## Common Mistakes & Debugging
+
+### Mistake 1: Relying on element ordering in sets
+Sets are completely unordered. Never access set items via index `s[0]` (raises `TypeError: 'set' object is not subscriptable`). If order matters, use a `list` or `dict.fromkeys()`.
+
+### Mistake 2: Using `.remove()` on missing elements
+`.remove()` raises `KeyError` if the item is not present. Use `.discard()` if the absence of an item is acceptable.
+
+## Practice Exercises
+
+### Exercise 1 (Beginner): Find Common Tags
+Given two article tag lists `tags_a = ["python", "ai", "backend", "cloud"]` and `tags_b = ["cloud", "docker", "python", "kubernetes"]`, find the shared tags using set intersection.
+
+### Exercise 2 (Intermediate): Permission Validator
+Write a function `has_required_permissions(user_perms: set[str], required: set[str]) -> bool` that returns `True` if `user_perms` contains all of the permissions listed in `required`.
+
+## Exercise Solutions
+
+```python
+# Solution 1:
+tags_a = ["python", "ai", "backend", "cloud"]
+tags_b = ["cloud", "docker", "python", "kubernetes"]
+
+common_tags = set(tags_a) & set(tags_b)
+print("Common tags:", sorted(common_tags))
+# -> Common tags: ['cloud', 'python']
+
+# Solution 2:
+def has_required_permissions(user_perms: set[str], required: set[str]) -> bool:
+    # Check if required is a subset of user_perms
+    return required.issubset(user_perms)
+
+user = {"read", "write", "export"}
+req_read_write = {"read", "write"}
+req_admin = {"read", "write", "delete"}
+
+print(has_required_permissions(user, req_read_write))  # -> True
+print(has_required_permissions(user, req_admin))       # -> False
+```
+
+## Summary
+
+- Sets are mutable collections of unique, hashable objects with $O(1)$ membership testing.
+- Empty sets are declared via `set()`, not `{}`.
+- Mathematical operations include union (`|`), intersection (`&`), difference (`-`), and symmetric difference (`^`).
+- `frozenset` is an immutable, hashable set suitable for dictionary keys.
+
+## Next Step
+
+Learn how to write modular, reusable code with function signatures, variable unpacking, and scope resolution in [Functions & Scope](/docs/python/basics/functions).

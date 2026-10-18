@@ -1,43 +1,144 @@
 ---
-title: Overview
-description: Python is an expressive, object-oriented, and dynamically typed programming language. Master its execution model, scoping rules, and standard library on LeccionesLab.
+title: Python Curriculum & Learning Roadmap
+description: Comprehensive Python 3.12+ curriculum taxonomy, from fundamental syntax and memory models to data structures, professional practices, and runtime architecture.
 ---
 
-Python is a versatile, high-level programming language designed for readability and rapid developer productivity. Whether building backend microservices, scientific data pipelines, or automated toolchains, Python provides clean syntax and a vast standard library ecosystem.
+Welcome to the **LeccionesLab Python Curriculum**. This comprehensive pathway is designed to guide developers from foundational concepts to production-grade system engineering and CPython runtime internals.
 
-On **LeccionesLab**, documentation is engineered for deep focus and precision. We combine progressive conceptual tutorials with authoritative reference specifications, eliminating distraction and superficial fluff.
+Every lesson emphasizes **accurate mental models**, **memory mechanics**, **Big-O complexity guarantees**, and **idiomatic Python 3.12+ patterns**.
 
-## Get started
+---
 
-Python code runs across workstations, cloud containers, and browser WebAssembly runtimes. The initial curriculum is organized into focused milestones:
+## Curriculum Taxonomy & Roadmap
 
-- **[Getting started](/docs/python/getting-started)**: Install Python 3.12+, configure isolated virtual environments (`venv`), and execute your first standalone scripts.
-- **[Variables & Assignment](/docs/python/basics/variables)**: Understand Python's reference-based memory model, identity vs. equality, and mutable object mutations.
-- **[Functions & Scope](/docs/python/basics/functions)**: Master first-class functions, parameter unpacking (`*args`, `**kwargs`), and the LEGB scope resolution algorithm.
-- **[Built-in Functions Reference](/docs/python/reference/built-in-functions)**: Concise technical signatures, parameters, return types, and complexity guarantees for core Python primitives.
+The curriculum is structured into ten sequential disciplines:
 
-## Execution Model
-
-In Python, every variable is a symbolic reference to a heap-allocated object. Unlike compiled languages with rigid stack memory slots, Python binds names dynamically:
-
-```python
-# Variables bind to heap-allocated objects
-values = [10, 20, 30]
-alias = values  # 'alias' references the exact same list object in memory
-alias.append(40)
-
-print(values)  # -> [10, 20, 30, 40]
-print(values is alias)  # -> True (identical memory address)
+```text
+LeccionesLab Python Learning Progression
+┌──────────────────────────────────────────────────────────────┐
+│  Track A: Python Foundations (Available)                    │
+│  Environment Isolation · Syntax & Types · Control Flow · I/O │
+└──────────────────────────────┬───────────────────────────────┘
+                               │
+                               ▼
+┌──────────────────────────────────────────────────────────────┐
+│  Track B: Strings & Data Collections (Available)             │
+│  Lists (Dynamic Arrays) · Tuples · Dictionaries · Hash Sets  │
+└──────────────────────────────┬───────────────────────────────┘
+                               │
+                               ▼
+┌──────────────────────────────────────────────────────────────┐
+│  Track C: Modules, Packages & Standard Library (Upcoming)    │
+│  Imports · Pathlib · Subprocess · Packaging & pyproject.toml  │
+└──────────────────────────────┬───────────────────────────────┘
+                               │
+                               ▼
+┌──────────────────────────────────────────────────────────────┐
+│  Track D: Intermediate Language Features (Upcoming)          │
+│  First-Class Functions · Closures · Generators · Decorators  │
+└──────────────────────────────┬───────────────────────────────┘
+                               │
+                               ▼
+┌──────────────────────────────────────────────────────────────┐
+│  Track E: Object-Oriented Programming (Upcoming)             │
+│  Classes · MRO & super() · Dunder Methods · Protocols & ABCs │
+└──────────────────────────────┬───────────────────────────────┘
+                               │
+                               ▼
+┌──────────────────────────────────────────────────────────────┐
+│  Track F: Advanced Python & Runtime Behavior (Upcoming)      │
+│  Garbage Collection · Asyncio Event Loops · GIL · Profiling  │
+└──────────────────────────────────────────────────────────────┘
 ```
 
-## What you can do
+---
 
-With LeccionesLab's Python documentation track, you can:
+## Track A: Python Foundations
 
-1. **Verify Semantics**: Consult precise syntax signatures and exception handling for standard built-in functions.
-2. **Prevent Edge Cases**: Avoid common anti-patterns like mutable default parameters, shallow copy mutations, and global scope pollution.
-3. **Copy Tested Code**: Every code snippet includes one-click clipboard copying and syntax highlighting tested against Python 3.12+.
+Foundational concepts governing syntax, execution models, and sequential logic.
 
-## Next steps
+| Module | Level | Key Concepts | Status |
+|---|---|---|---|
+| **[Getting Started](/docs/python/getting-started)** | Beginner | Python 3.12+, `venv` hermetic isolation, script execution, IDE setup | **Available** |
+| **[Syntax & Primitive Data Types](/docs/python/basics/syntax-and-types)** | Beginner | Indentation rules, statements vs. expressions, `int`, `float`, `bool`, `NoneType` | **Available** |
+| **[Variables & Assignment](/docs/python/basics/variables)** | Beginner | Memory references, object rebinding, `is` vs. `==`, mutability semantics | **Available** |
+| **[Operators & Expressions](/docs/python/basics/operators-and-expressions)** | Beginner | True vs. floor division, chained comparisons, short-circuit `and`/`or`, walrus `:=` | **Available** |
+| **[Control Flow & Pattern Matching](/docs/python/basics/control-flow)** | Beginner | `if`/`elif`/`else`, Python 3.10+ `match`/`case`, loops, loop `else` idiom | **Available** |
+| **[Strings & Text Processing](/docs/python/basics/strings)** | Beginner | Unicode immutability, extended slicing `[::-1]`, f-strings, string methods | **Available** |
+| **[Functions & Scope](/docs/python/basics/functions)** | Intermediate | `def` signatures, `*args`, `**kwargs`, LEGB scope hierarchy, default traps | **Available** |
+| **[Built-in Functions Reference](/docs/python/reference/built-in-functions)** | Reference | Specifications for `len()`, `zip()`, `map()`, and `enumerate()` | **Available** |
 
-Ready to dive in? Begin by setting up an isolated development environment in [Getting started](/docs/python/getting-started).
+---
+
+## Track B: Strings & Collections
+
+Understanding memory layout, pointer arrays, and algorithmic complexity for core collection types.
+
+| Module | Level | Key Concepts | Status |
+|---|---|---|---|
+| **[Lists & Dynamic Arrays](/docs/python/collections/lists)** | Beginner–Intermediate | Contiguous pointer arrays, over-allocation, in-place mutation, list comprehensions | **Available** |
+| **[Tuples, Immutability & Unpacking](/docs/python/collections/tuples)** | Beginner–Intermediate | Fixed memory allocation, starred unpacking `*rest`, hashability, `NamedTuple` | **Available** |
+| **[Dictionaries & Hash Tables](/docs/python/collections/dictionaries)** | Intermediate | Compact hash table layout, $O(1)$ lookups, view objects, union operator `|` | **Available** |
+| **[Sets & Mathematical Operations](/docs/python/collections/sets)** | Intermediate | Hash sets, deduplication, union `|`, intersection `&`, difference `-`, `frozenset` | **Available** |
+
+---
+
+## Collection Complexity Cheat Sheet
+
+| Container | Operation | Average Complexity | Worst Case | Notes |
+|---|---|---|---|---|
+| **List** | Index lookup `l[i]` | $O(1)$ | $O(1)$ | Direct pointer offset |
+| **List** | Append `l.append(x)` | $O(1)$ amortized | $O(N)$ | Infrequent dynamic array growth |
+| **List** | Insert/Delete at index 0 | $O(N)$ | $O(N)$ | Must shift all subsequent pointers |
+| **Tuple** | Index lookup `t[i]` | $O(1)$ | $O(1)$ | Fixed-length pointer array |
+| **Dictionary** | Lookup `d[key]` | $O(1)$ | $O(N)$ | Hash table open addressing |
+| **Dictionary** | Insert `d[key] = val` | $O(1)$ | $O(N)$ | Insertion-ordered compact hash table |
+| **Set** | Membership `x in s` | $O(1)$ | $O(N)$ | Hash table membership verification |
+
+---
+
+## Upcoming Curriculum Tracks
+
+The following advanced tracks are scheduled in subsequent content releases:
+
+### Track C: Modules & Standard Library (Upcoming)
+- Import machinery, `sys.path`, `__name__ == "__main__"`.
+- Essential standard library modules: `pathlib`, `os`, `sys`, `json`, `csv`, `datetime`, `collections`, `itertools`, `subprocess`, `argparse`.
+- Modern packaging with `pyproject.toml` and virtual environment management.
+
+### Track D: Intermediate Language Features (Upcoming)
+- First-class functions, closures, and lambda expressions.
+- Iterators, the iterator protocol (`__iter__`, `__next__`), and generator functions (`yield`, `yield from`).
+- Function and class decorators, parameterized decorators.
+- Exception hierarchies, context managers (`with`, `contextlib`), and static typing with `mypy`/`pyright`.
+
+### Track E: Object-Oriented Programming (Upcoming)
+- Classes, instance vs. class attributes, static methods, and `@classmethod`.
+- Inheritance, composition, polymorphism, and Method Resolution Order (`super()`, MRO).
+- Dunder methods (`__repr__`, `__eq__`, `__add__`), descriptors, `@property`, and `__slots__`.
+- Abstract Base Classes (`abc.ABC`), structural subtyping (`typing.Protocol`), and `dataclasses`.
+
+### Track F: Advanced Python & Runtime Internals (Upcoming)
+- CPython memory model, reference counting, and cyclic garbage collection (`gc` module).
+- Concurrency models: multithreading (GIL constraints), multiprocessing, and `concurrent.futures`.
+- Asynchronous programming with `asyncio`, coroutines, tasks, and asynchronous context managers.
+- C extensions, ctypes, and performance profiling.
+
+### Track G: Professional Engineering Practices (Upcoming)
+- Testing with `pytest`, fixtures, parameterization, mocking, and coverage analysis.
+- Code quality toolchains: `Ruff` linter/formatter, static type checking, pre-commit hooks.
+- Architecture patterns, dependency injection, and secure coding practices.
+
+### Track H: Backend Application Engineering (Upcoming)
+- Asynchronous Web APIs with **FastAPI**: Pydantic validation, dependency injection, async route handlers.
+- Production Web Services with **Django**: ORM, migrations, authentication, and security hardening.
+- Relational databases, connection pooling with SQLAlchemy, and PostgreSQL migrations.
+
+---
+
+## Suggested Starting Pathway
+
+1. If you are setting up your workstation, start with **[Getting Started](/docs/python/getting-started)**.
+2. If you want to understand core syntax and data types, read **[Syntax & Primitive Data Types](/docs/python/basics/syntax-and-types)**.
+3. If you want to master Python's memory model, read **[Variables & Assignment](/docs/python/basics/variables)**.
+4. For collection performance and algorithms, dive into **[Lists & Dynamic Arrays](/docs/python/collections/lists)** and **[Dictionaries & Hash Tables](/docs/python/collections/dictionaries)**.

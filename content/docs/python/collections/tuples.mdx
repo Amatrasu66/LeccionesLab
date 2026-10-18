@@ -1,0 +1,219 @@
+---
+title: Tuples, Immutability & Unpacking
+description: Master Python tuples, immutability guarantees, memory allocation advantages over lists, sequence unpacking (*rest), and named tuples.
+---
+
+A Python tuple is an immutable, ordered sequence of elements. While superficially similar to lists, tuples serve a distinct semantic purpose: they represent fixed data records, protect collections against accidental mutation, and—because they are hashable when containing immutable items—can serve as dictionary keys and set members.
+
+## Learning Objectives
+
+By completing this lesson, you will be able to:
+- Instantiate tuples, including single-element tuples using trailing commas.
+- Explain the memory allocation and execution advantages of tuples over lists.
+- Perform advanced sequence unpacking using the starred expression (`*rest`).
+- Understand tuple hashability requirements for dictionary keys.
+- Write self-documenting data models using `typing.NamedTuple`.
+
+## Prerequisites
+
+- [Variables & Assignment](/docs/python/basics/variables)
+- [Lists & Dynamic Arrays](/docs/python/collections/lists)
+
+## 1. Tuple Syntax & Creation
+
+Tuples are defined by comma-separated values, optionally enclosed in parentheses `()`:
+
+```python
+# Standard tuple definition
+coordinates = (37.7749, -122.4194)
+
+# Parentheses are often optional (tuple packing):
+dimensions = 1920, 1080
+print(type(dimensions))  # -> <class 'tuple'>
+
+# Empty tuple
+empty = ()
+
+# CRITICAL: Single-element tuple MUST include a trailing comma!
+not_a_tuple = (42)    # Evaluates to int 42!
+single_tuple = (42,)  # True 1-element tuple
+print(type(not_a_tuple))   # -> <class 'int'>
+print(type(single_tuple))  # -> <class 'tuple'>
+```
+
+## 2. Immutability & Memory Advantages
+
+Once a tuple is instantiated, its items cannot be reassigned, appended, or deleted:
+
+```python
+point = (10, 20)
+# point[0] = 99  # Raises TypeError: 'tuple' object does not support item assignment
+```
+
+### Memory Efficiency: Tuples vs. Lists
+
+Because tuples have a fixed length determined at instantiation time:
+1. Python allocates exactly the required number of pointers without an over-allocation buffer.
+2. CPython caches small, deallocated tuples (up to 20 elements) for rapid reuse, reducing garbage collection pressure.
+
+```python
+import sys
+
+sample_list = [1, 2, 3, 4, 5]
+sample_tuple = (1, 2, 3, 4, 5)
+
+print(f"List size: {sys.getsizeof(sample_list)} bytes")    # ~104 bytes
+print(f"Tuple size: {sys.getsizeof(sample_tuple)} bytes")  # ~80 bytes
+```
+
+### The Mutation Trap: Tuples Containing Mutable Objects
+
+A tuple's references are immutable, but the objects referenced by the tuple may themselves be mutable:
+
+```python
+mixed = (1, [2, 3])
+# mixed[1] = [99]  # TypeError! Reference cannot be changed.
+
+# But the inner list CAN be mutated:
+mixed[1].append(4)
+print(mixed)  # -> (1, [2, 3, 4])
+```
+
+## 3. Sequence Unpacking
+
+Python supports elegant sequence unpacking, extracting values into named identifiers in a single statement:
+
+```python
+# Basic unpacking (must match length exactly)
+server = ("192.168.1.100", 8080, "production")
+host, port, environment = server
+print(f"Host: {host}, Port: {port}")
+
+# Swap variables without a temporary variable
+a, b = 10, 20
+a, b = b, a
+print(f"{a=}, {b=}")  # -> a=20, b=10
+```
+
+### Extended Unpacking with `*` (PEP 3132)
+
+Use the starred expression `*` to capture variable-length slices:
+
+```python
+record = ("Alice", 95, 88, 92, 94, "A")
+name, *scores, final_grade = record
+
+print(name)         # -> Alice
+print(scores)       # -> [95, 88, 92, 94] (captured as a list)
+print(final_grade)  # -> A
+```
+
+## 4. Tuples as Dictionary Keys & Set Elements
+
+Dictionaries and sets require keys to be **hashable** (implementing `__hash__()` and `__eq__()`). Lists are unhashable because their contents can mutate. A tuple is hashable **if and only if all of its elements are hashable**:
+
+```python
+# Geo-coordinate lookup cache
+distance_cache = {}
+
+distance_cache[((37.77, -122.41), (34.05, -118.24))] = 382.4
+print(distance_cache[((37.77, -122.41), (34.05, -118.24))])  # -> 382.4
+
+# ❌ TypeError: unhashable type: 'list'
+# invalid_key = (1, [2, 3])
+# distance_cache[invalid_key] = "error"
+```
+
+## 5. Structured Data with `NamedTuple`
+
+When tuples represent multi-field records, index-based access (`user[0]`, `user[1]`) becomes error-prone. Python provides `typing.NamedTuple` to define tuples with named attributes and type annotations with zero performance penalty:
+
+```python
+from typing import NamedTuple
+
+class ConnectionConfig(NamedTuple):
+    host: str
+    port: int
+    timeout_ms: int = 5000
+    ssl_enabled: bool = True
+
+config = ConnectionConfig("db.production.internal", 5432)
+
+# Access by attribute name:
+print(config.host)        # -> db.production.internal
+print(config.port)        # -> 5432
+print(config.ssl_enabled) # -> True
+
+# Still unpackable and indexable like standard tuples:
+h, p, *rest = config
+print(h, p)  # -> db.production.internal 5432
+```
+
+## Common Mistakes & Debugging
+
+### Mistake 1: Missing comma on single-element tuple
+```python
+# ❌ INCORRECT: Treats parentheses as grouping operator
+val = ("active")
+print(type(val))  # -> <class 'str'>
+
+# ✅ CORRECT: Add trailing comma
+val = ("active",)
+print(type(val))  # -> <class 'tuple'>
+```
+
+### Mistake 2: Attempting to hash a tuple with mutable elements
+If a tuple contains a list or dictionary, passing it to `set()` or using it as a dictionary key raises `TypeError: unhashable type`.
+
+## Practice Exercises
+
+### Exercise 1 (Beginner): Coordinate Distance
+Given two 2D points `p1 = (1, 2)` and `p2 = (4, 6)`, unpack their coordinates and calculate the Euclidean distance (`d = math.sqrt((x2 - x1)**2 + (y2 - y1)**2)`).
+
+### Exercise 2 (Intermediate): Log Record Parser with `NamedTuple`
+Create a `NamedTuple` called `LogEntry` with fields `timestamp`, `level`, and `message`. Write a function that parses a log line `"2026-10-18T10:00:00 [ERROR] Connection refused"` into a `LogEntry`.
+
+## Exercise Solutions
+
+```python
+import math
+from typing import NamedTuple
+
+# Solution 1:
+p1 = (1, 2)
+p2 = (4, 6)
+x1, y1 = p1
+x2, y2 = p2
+distance = math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2)
+print(f"Distance: {distance:.2f}")  # -> Distance: 5.00
+
+# Solution 2:
+class LogEntry(NamedTuple):
+    timestamp: str
+    level: str
+    message: str
+
+def parse_log_line(line: str) -> LogEntry:
+    # Split timestamp, [LEVEL], and remainder
+    parts = line.split(" ", 2)
+    timestamp = parts[0]
+    level = parts[1].strip("[]")
+    message = parts[2]
+    return LogEntry(timestamp=timestamp, level=level, message=message)
+
+entry = parse_log_line("2026-10-18T10:00:00 [ERROR] Connection refused")
+print(f"Level: {entry.level}, Msg: {entry.message}")
+# -> Level: ERROR, Msg: Connection refused
+```
+
+## Summary
+
+- Tuples are immutable, ordered, and memory-efficient sequence containers.
+- Single-element tuples require a trailing comma: `(item,)`.
+- Starred unpacking (`*rest`) captures variable-length elements.
+- Tuples containing only immutable elements are hashable and valid dictionary keys.
+- Use `typing.NamedTuple` to pair tuple performance with self-documenting attribute access.
+
+## Next Step
+
+Explore key-value mappings and $O(1)$ hash table lookups in [Dictionaries & Hash Tables](/docs/python/collections/dictionaries).

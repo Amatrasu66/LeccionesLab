@@ -1,0 +1,9 @@
+{
+  "title": "Collections",
+  "pages": [
+    "lists",
+    "tuples",
+    "dictionaries",
+    "sets"
+  ]
+}
