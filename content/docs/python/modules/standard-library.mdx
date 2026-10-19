@@ -1,0 +1,260 @@
+---
+title: Standard Library Essentials
+description: "Production-grade guide to Python's batteries-included standard library: pathlib, os, sys, json, csv, datetime, and collections."
+---
+
+Python's philosophy of being "batteries included" means the standard library provides extensive, well-tested, production-ready modules right out of the box without installing third-party dependencies.
+
+Mastering the modern standard library—especially `pathlib`, `json`, `csv`, `datetime`, and `collections`—allows you to build fast, robust, and portable systems with minimal overhead.
+
+## Learning Objectives
+
+By completing this lesson, you will be able to:
+- Replace legacy string-based `os.path` operations with object-oriented `pathlib.Path`.
+- Parse, manipulate, and generate structured data using the `json` and `csv` modules.
+- Handle timestamps, date arithmetic, formatting, and timezones safely with `datetime`.
+- Use specialized data containers from `collections`: `Counter`, `defaultdict`, `deque`, and `namedtuple`.
+- Inspect runtime environments, platform characteristics, and standard I/O streams using `sys` and `os`.
+
+## Prerequisites
+
+- [Strings & Text Formatting](/docs/python/basics/strings)
+- [Dictionaries & Hash Tables](/docs/python/collections/dictionaries)
+
+## 1. File System Operations: Modern `pathlib` vs Legacy `os.path`
+
+Python 3.4+ introduced `pathlib`, which models filesystem paths as first-class objects with operator overloading (`/`) rather than raw strings.
+
+```python
+from pathlib import Path
+
+# Create path object representing a file or directory
+current_file = Path(__file__).resolve()
+project_dir = current_file.parent.parent
+
+# Operator overloading for cross-platform path joining
+config_path = project_dir / "configs" / "settings.json"
+
+print("Path:", config_path)
+print("Filename:", config_path.name)       # -> settings.json
+print("Stem:", config_path.stem)           # -> settings
+print("Suffix:", config_path.suffix)       # -> .json
+print("Parent:", config_path.parent)
+
+# Check existence and file type
+if config_path.exists():
+    print("Is file:", config_path.is_file())
+```
+
+### Reading and Writing Files with `pathlib`
+`Path` objects provide built-in text and byte I/O convenience methods that automatically handle opening and closing file descriptors:
+
+```python
+from pathlib import Path
+
+log_file = Path("app.log")
+
+# Write text (UTF-8 by default)
+log_file.write_text("2026-10-19 [INFO] System started\n", encoding="utf-8")
+
+# Read text directly
+content = log_file.read_text(encoding="utf-8")
+print(content.strip())
+
+# Clean up
+if log_file.exists():
+    log_file.unlink()
+```
+
+### Recursive Directory Scanning
+```python
+src_dir = Path("./src")
+# Find all Python files recursively
+for py_file in src_dir.rglob("*.py"):
+    print(py_file)
+```
+
+## 2. Structured Data: `json` and `csv`
+
+### JSON Serialization & Deserialization
+The `json` module translates Python dictionaries and lists to JSON strings (`dumps`/`loads`) or directly to file streams (`dump`/`load`).
+
+```python
+import json
+
+payload = {
+    "user_id": 1042,
+    "username": "ada_lovelace",
+    "roles": ["admin", "developer"],
+    "active": True,
+    "score": None,
+}
+
+# Serialize Python dict to JSON string
+json_str = json.dumps(payload, indent=2, sort_keys=True)
+print(json_str)
+
+# Deserialize JSON string back to Python dict
+parsed = json.loads(json_str)
+print(parsed["username"])  # -> 'ada_lovelace'
+```
+
+### Tabular CSV Data with `csv.DictReader` and `csv.DictWriter`
+Using dictionary-based readers and writers ensures your code relies on column headers rather than brittle numeric indexes:
+
+```python
+import csv
+import io
+
+# Example in-memory CSV buffer
+csv_data = """id,product,price\n101,Keyboard,89.50\n102,Mouse,49.00\n"""
+
+# Reading with DictReader
+reader = csv.DictReader(io.StringIO(csv_data))
+for row in reader:
+    print(f"Product: {row['product']}, Price: ${float(row['price']):.2f}")
+
+# Writing with DictWriter
+output_buffer = io.StringIO()
+fieldnames = ["id", "product", "price"]
+writer = csv.DictWriter(output_buffer, fieldnames=fieldnames)
+writer.writeheader()
+writer.writerow({"id": "103", "product": "Monitor", "price": "299.00"})
+print(output_buffer.getvalue())
+```
+
+## 3. Dates, Times & Timezones: `datetime`
+
+Never store or manipulate timestamps as plain strings. Use `datetime` with timezone awareness:
+
+```python
+from datetime import datetime, timezone, timedelta
+
+# Always use timezone-aware UTC timestamps in backend systems
+now_utc = datetime.now(timezone.utc)
+print("Current UTC:", now_utc.isoformat())
+
+# Date arithmetic with timedelta
+expiry = now_utc + timedelta(days=7, hours=2)
+print("Expires at:", expiry.isoformat())
+
+# Formatting and parsing
+formatted = now_utc.strftime("%Y-%m-%d %H:%M:%S")
+print("Formatted:", formatted)
+
+parsed_dt = datetime.strptime("2026-10-19 14:30:00", "%Y-%m-%d %H:%M:%S")
+print("Parsed:", parsed_dt)
+```
+
+## 4. Specialized Data Structures: `collections`
+
+The `collections` module provides specialized containers extending Python's basic `dict`, `list`, `set`, and `tuple`:
+
+```python
+from collections import Counter, defaultdict, deque, namedtuple
+
+# 1. Counter: Multiset for frequency counting
+words = ["apple", "banana", "apple", "cherry", "banana", "banana"]
+freq = Counter(words)
+print(freq.most_common(2))  # -> [('banana', 3), ('apple', 2)]
+
+# 2. defaultdict: Dict with automatic default factory on missing keys
+grouped = defaultdict(list)
+grouped["engineering"].append("Alice")
+grouped["engineering"].append("Bob")
+print(grouped["engineering"])  # -> ['Alice', 'Bob']
+
+# 3. deque: Double-ended queue with O(1) appends and pops from BOTH ends
+queue = deque(maxlen=3)
+queue.extend([1, 2, 3])
+queue.append(4)  # 1 is automatically evicted because maxlen is reached
+print(list(queue))  # -> [2, 3, 4]
+
+# 4. namedtuple: Lightweight, memory-efficient immutable record
+Point = namedtuple("Point", ["x", "y"])
+p = Point(10, 20)
+print(p.x, p.y)  # -> 10 20
+```
+
+## Common Mistakes & Anti-Patterns
+
+### Mistake 1: Using Naive `datetime.now()` Without Timezones
+Naive datetimes do not know what timezone they represent. When stored in databases or compared across servers, this causes silent date offsets:
+```python
+# ❌ Anti-pattern: Naive local time
+naive = datetime.now()
+
+# ✅ Best practice: Explicit timezone
+aware_utc = datetime.now(timezone.utc)
+```
+
+### Mistake 2: Manual String Concatenation for File Paths
+```python
+# ❌ Anti-pattern: Fails on Windows due to slash direction
+path = folder + "/" + filename
+
+# ✅ Best practice: pathlib.Path operator
+path = Path(folder) / filename
+```
+
+## Practice Exercises
+
+### Exercise 1: CSV Audit Aggregator
+Given a CSV string of transactions with columns `user,amount,category`, write a function `aggregate_expenses(csv_text: str) -> dict[str, float]` that calculates the total amount spent per category using `csv.DictReader` and `defaultdict`.
+
+### Exercise 2: File Age Filter
+Write a function `find_recent_files(directory_path: str, max_age_days: int) -> list[str]` using `pathlib.Path` and `datetime` that returns the names of all `.txt` files in a directory modified within the last `max_age_days`.
+
+## Exercise Solutions
+
+```python
+import csv
+import io
+from collections import defaultdict
+from datetime import datetime, timezone, timedelta
+from pathlib import Path
+
+# Solution 1:
+def aggregate_expenses(csv_text: str) -> dict[str, float]:
+    totals = defaultdict(float)
+    reader = csv.DictReader(io.StringIO(csv_text.strip()))
+    for row in reader:
+        category = row["category"].strip()
+        amount = float(row["amount"])
+        totals[category] += amount
+    return dict(totals)
+
+sample_csv = """user,amount,category
+alice,42.50,groceries
+bob,15.00,dining
+alice,18.00,groceries
+charlie,100.00,electronics"""
+
+print(aggregate_expenses(sample_csv))
+# -> {'groceries': 60.5, 'dining': 15.0, 'electronics': 100.0}
+
+# Solution 2:
+def find_recent_files(directory_path: str, max_age_days: int) -> list[str]:
+    p = Path(directory_path)
+    if not p.is_dir():
+        return []
+    cutoff = datetime.now(timezone.utc) - timedelta(days=max_age_days)
+    recent = []
+    for f in p.glob("*.txt"):
+        if f.is_file():
+            mod_time = datetime.fromtimestamp(f.stat().st_mtime, tz=timezone.utc)
+            if mod_time >= cutoff:
+                recent.append(f.name)
+    return recent
+```
+
+## Summary
+
+- Use `pathlib.Path` for all filesystem operations; avoid legacy `os.path` string manipulation.
+- Serialize and deserialize data cleanly with `json` and `csv.DictReader`/`csv.DictWriter`.
+- Keep all timestamps in UTC using `datetime.now(timezone.utc)`.
+- Use `collections.defaultdict` for grouping, `Counter` for tallies, and `deque` for FIFO queues.
+
+## Next Step
+
+Learn advanced streaming transformations and function decorators in [Iteration & Functional Utilities](/docs/python/modules/iteration-utilities).

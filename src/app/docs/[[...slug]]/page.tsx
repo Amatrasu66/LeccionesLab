@@ -22,6 +22,10 @@ export default async function Page(props: {
   let kicker = 'DOCUMENTATION';
   if (slugPath.includes('reference')) {
     kicker = 'TECHNICAL REFERENCE';
+  } else if (slugPath.includes('intermediate')) {
+    kicker = 'INTERMEDIATE FEATURES';
+  } else if (slugPath.includes('modules')) {
+    kicker = 'MODULES & STANDARD LIBRARY';
   } else if (slugPath.includes('collections')) {
     kicker = 'STRINGS & COLLECTIONS';
   } else if (slugPath.includes('basics')) {

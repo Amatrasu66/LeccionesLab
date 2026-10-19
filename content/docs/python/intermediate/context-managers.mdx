@@ -1,0 +1,245 @@
+---
+title: Context Managers & Resource Management
+description: Master deterministic resource cleanup, the with statement, the __enter__ and __exit__ protocol, contextlib generators, and dynamic ExitStack resource management.
+---
+
+In software engineering, resource management—ensuring that open files, database connections, network sockets, GPU buffers, and thread locks are released even when runtime errors crash execution—is a critical correctness concern.
+
+In languages without deterministic cleanup, forgetting a `close()` statement triggers resource leaks that eventually crash servers. Python solves this elegantly with the **`with` statement** and the **Context Manager protocol**.
+
+## Learning Objectives
+
+By completing this lesson, you will be able to:
+- Explain how the `with` statement guarantees deterministic resource release.
+- Implement the class-based Context Manager protocol using `__enter__()` and `__exit__()`.
+- Inspect and conditionally suppress exceptions inside `__exit__()` by returning `True`.
+- Construct lightweight context managers from generator functions using `@contextlib.contextmanager`.
+- Dynamically manage variable numbers of resources simultaneously using `contextlib.ExitStack`.
+- Recognize asynchronous context managers using `async with`, `__aenter__`, and `__aexit__`.
+
+## Prerequisites
+
+- [Functions & Scope](/docs/python/basics/functions)
+- [Closures, Scopes & Decorators](/docs/python/intermediate/decorators-and-closures)
+
+## 1. The `with` Statement & Protocol Mechanics
+
+The `with` statement wraps a block of execution with setup and teardown logic managed by a **Context Manager**:
+
+```python
+# Canonical file reading with deterministic cleanup
+with open("sample.txt", "w", encoding="utf-8") as f:
+    f.write("Hello, World!")
+# When the with-block terminates (or crashes), Python guarantees f.close() was executed!
+```
+
+Under the hood, any object can act as a context manager if it implements two methods:
+1. `__enter__()`: Executed immediately before entering the `with` block. Its return value is bound to the variable following `as`.
+2. `__exit__(exc_type, exc_val, exc_tb)`: Executed when exiting the block, whether cleanly or due to an unhandled exception.
+
+### Implementing a Class-Based Context Manager
+
+```python
+import time
+
+class BenchmarkTimer:
+    """Measures execution time of any code block."""
+    def __init__(self, label: str):
+        self.label = label
+        self.start_time = 0.0
+
+    def __enter__(self):
+        print(f"[{self.label}] Starting timer...")
+        self.start_time = time.perf_counter()
+        return self  # Passed to 'as' target
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        duration = time.perf_counter() - self.start_time
+        print(f"[{self.label}] Completed in {duration * 1000:.2f} ms")
+        # Return False (or None) to let any raised exception bubble up normally.
+        # Return True if you wish to suppress the exception.
+        return False
+
+# Usage:
+with BenchmarkTimer("Array Allocation"):
+    data = [x * 2 for x in range(500_000)]
+```
+
+Output:
+```text
+[Array Allocation] Starting timer...
+[Array Allocation] Completed in 28.45 ms
+```
+
+## 2. Exception Handling Inside `__exit__`
+
+If an exception occurs within a `with` block:
+- Python passes `exc_type`, `exc_val`, and `exc_tb` (traceback) into `__exit__`.
+- If `__exit__` returns `True`, Python **suppresses the exception** and execution resumes normally after the `with` block.
+- If `__exit__` returns `False` or `None`, the exception continues propagating.
+
+```python
+class SuppressErrors:
+    """Selectively suppresses specific exception types."""
+    def __init__(self, *exceptions_to_catch):
+        self.exceptions_to_catch = exceptions_to_catch
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if exc_type is not None and issubclass(exc_type, self.exceptions_to_catch):
+            print(f"Suppressed expected error: {exc_val}")
+            return True  # Suppress!
+        return False  # Propagate other exceptions
+
+with SuppressErrors(KeyError, IndexError):
+    d = {"a": 1}
+    _ = d["non_existent_key"]  # Normally crashes, but suppressed!
+
+print("Program survived KeyError!")
+```
+
+## 3. Lightweight Context Managers with `@contextlib.contextmanager`
+
+Writing class boilerplate for simple setups can be verbose. The `@contextlib.contextmanager` decorator turns a generator into a context manager:
+- Code **before** `yield` runs in `__enter__`.
+- The value **yielded** is bound to the `as` variable.
+- Code **after** `yield` runs in `__exit__` (wrapped in a `finally` block).
+
+```python
+import contextlib
+import os
+
+@contextlib.contextmanager
+def temporary_working_directory(new_path: str):
+    """Safely switch working directory and guarantee restoration."""
+    previous_path = os.getcwd()
+    os.chdir(new_path)
+    try:
+        yield new_path
+    finally:
+        # Guarantees we always return to original directory!
+        os.chdir(previous_path)
+
+# Example:
+# with temporary_working_directory("/tmp") as cwd:
+#     print("Currently inside:", os.getcwd())
+# print("Restored to:", os.getcwd())
+```
+
+## 4. Managing Dynamic Resources with `ExitStack`
+
+What if you need to open an unpredictable number of files or database locks simultaneously (e.g., merging 10 CSV files)? Nesting 10 `with` statements is unmaintainable.
+
+Use **`contextlib.ExitStack`**:
+
+```python
+import contextlib
+from pathlib import Path
+
+def merge_log_files(output_path: Path, input_paths: list[Path]):
+    with contextlib.ExitStack() as stack:
+        # Dynamically register any number of context managers
+        in_files = [stack.enter_context(p.open("r", encoding="utf-8")) for p in input_paths]
+        out_file = stack.enter_context(output_path.open("w", encoding="utf-8"))
+        
+        for f in in_files:
+            for line in f:
+                out_file.write(line)
+    # When ExitStack block exits, ALL opened files are closed in reverse order!
+```
+
+## Common Mistakes & Anti-Patterns
+
+### Mistake 1: Forgetting `try...finally` in `@contextmanager`
+If you use `@contextmanager` without `try...finally`, any exception raised inside the user's `with` block prevents your cleanup code after `yield` from ever executing!
+```python
+# ❌ INCORRECT: Cleanup is skipped on error
+@contextlib.contextmanager
+def bad_lock():
+    acquire_lock()
+    yield
+    release_lock()  # Never runs if with-block raises an exception!
+
+# ✅ CORRECT:
+@contextlib.contextmanager
+def good_lock():
+    acquire_lock()
+    try:
+        yield
+    finally:
+        release_lock()
+```
+
+## Practice Exercises
+
+### Exercise 1: In-Memory Transaction Rollback
+Create a context manager `dictionary_transaction(d: dict)` that yields a copy of the dictionary. If the `with` block completes without error, apply all changes back to `d`. If an exception occurs, leave `d` completely unchanged and let the exception propagate.
+
+### Exercise 2: stdout Redirector
+Write a context manager `capture_stdout()` using `contextlib` and `io.StringIO` that temporarily redirects `sys.stdout` so that any calls to `print()` inside the `with` block are captured into a string buffer rather than appearing on the terminal.
+
+## Exercise Solutions
+
+```python
+import contextlib
+import io
+import sys
+
+# Solution 1:
+@contextlib.contextmanager
+def dictionary_transaction(d: dict):
+    snapshot = d.copy()
+    try:
+        # Let caller mutate original dict directly
+        yield d
+    except Exception:
+        # Rollback on failure
+        d.clear()
+        d.update(snapshot)
+        raise
+
+# Test transaction:
+account = {"balance": 100, "status": "active"}
+
+try:
+    with dictionary_transaction(account):
+        account["balance"] -= 50
+        raise ValueError("Network lost during payment confirmation!")
+except ValueError:
+    pass
+
+print(account["balance"])  # -> 100 (Rolled back successfully!)
+
+# Solution 2:
+@contextlib.contextmanager
+def capture_stdout():
+    buffer = io.StringIO()
+    old_stdout = sys.stdout
+    sys.stdout = buffer
+    try:
+        yield buffer
+    finally:
+        sys.stdout = old_stdout
+
+with capture_stdout() as buf:
+    print("Secret calculation: 42")
+    print("Finished.")
+
+captured_text = buf.getvalue()
+print("Captured Output Length:", len(captured_text))
+print("Captured:", repr(captured_text))
+```
+
+## Summary
+
+- The `with` statement and context manager protocol enforce deterministic resource cleanup.
+- Class-based context managers define `__enter__()` and `__exit__()`.
+- Return `True` from `__exit__()` only when intentionally suppressing an error.
+- Use `@contextlib.contextmanager` with `try...finally` to write clean generator-based context managers.
+- Use `contextlib.ExitStack` when managing dynamic, variable lists of resources.
+
+## Next Step
+
+Explore Python's exception hierarchy, chaining, and error recovery in [Exception Hierarchies & Robust Error Handling](/docs/python/intermediate/exception-handling).

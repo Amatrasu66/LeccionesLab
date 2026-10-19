@@ -1,0 +1,223 @@
+---
+title: Type Hints & Static Type Analysis
+description: Comprehensive guide to Python gradual typing, PEP 484, union syntax, generic protocols, dataclasses, and static verification with mypy.
+---
+
+Python is dynamically typed: variables hold references to values whose types are checked at runtime. While this enables rapid prototyping and extraordinary flexibility, large-scale enterprise systems require contract guarantees to prevent runtime `AttributeError` and `TypeError` crashes.
+
+PEP 484 introduced **type hints** to Python. Type hints do not change runtime execution speed or enforce types dynamically; instead, they serve as machine-readable contracts verified ahead-of-time by static type checkers like **`mypy`** and language servers.
+
+## Learning Objectives
+
+By completing this lesson, you will be able to:
+- Annotate variables, function parameters, and return types using modern Python syntax.
+- Represent optional values and multi-type values using the modern union operator (`str | None`).
+- Construct composite collection types (`list[int]`, `dict[str, Any]`, `tuple[str, int]`).
+- Define generic functions using `TypeVar` and Python 3.12+ syntax.
+- Implement structural subtyping (static duck typing) using `typing.Protocol`.
+- Model domain data structures using `@dataclass` with enforced type hints.
+- Run static type analysis using `mypy` to detect bugs before deployment.
+
+## Prerequisites
+
+- [Functions & Scope](/docs/python/basics/functions)
+- [Dictionaries & Hash Tables](/docs/python/collections/dictionaries)
+
+## 1. Modern Type Hinting Syntax
+
+In Python 3.10+, you no longer need to import `List`, `Dict`, `Tuple`, or `Optional` from the `typing` module. You can use standard built-in collections and the pipe `|` operator directly:
+
+```python
+from __future__ import annotations
+from typing import Any, Callable
+
+# 1. Basic scalar annotations
+username: str = "guido"
+retry_count: int = 3
+timeout_seconds: float = 10.5
+is_production: bool = False
+
+# 2. Collection annotations
+tags: list[str] = ["web", "api", "v2"]
+user_scores: dict[str, int] = {"alice": 95, "bob": 88}
+coordinate: tuple[float, float] = (37.7749, -122.4194)
+
+# 3. Optional values using the Union operator '|'
+def find_user_email(user_id: int) -> str | None:
+    if user_id == 1:
+        return "admin@example.com"
+    return None
+
+# 4. Higher-order function annotations with Callable
+def transform_strings(
+    items: list[str],
+    transform_fn: Callable[[str], str]
+) -> list[str]:
+    return [transform_fn(x) for x in items]
+```
+
+## 2. Generics & Type Variables
+
+When a function should accept and return the same arbitrary type, use `TypeVar`:
+
+```python
+from typing import TypeVar, Sequence
+
+T = TypeVar("T")
+
+def first_element(items: Sequence[T]) -> T | None:
+    """Returns the first element of any sequence while preserving its type."""
+    return items[0] if items else None
+
+# mypy knows that num is int | None:
+num = first_element([10, 20, 30])
+
+# mypy knows that word is str | None:
+word = first_element(["hello", "world"])
+```
+
+## 3. Structural Subtyping with `Protocol` (Duck Typing)
+
+Python's philosophy has always been **Duck Typing**: *"If it walks like a duck and quacks like a duck, it's a duck."*
+
+`typing.Protocol` allows you to define structural interfaces. A class satisfies the `Protocol` simply by implementing the specified methods—no explicit inheritance needed!
+
+```python
+from typing import Protocol
+
+class Renderable(Protocol):
+    """Any object with a render() method returning a string."""
+    def render(self) -> str:
+        ...
+
+# Two completely independent classes without shared inheritance:
+class Button:
+    def render(self) -> str:
+        return "<button>Submit</button>"
+
+class Header:
+    def render(self) -> str:
+        return "<h1>Welcome</h1>"
+
+def display_component(component: Renderable) -> None:
+    print(component.render())
+
+display_component(Button())  # Passes static type checking!
+display_component(Header())  # Passes static type checking!
+```
+
+## 4. Strongly Typed Records with `@dataclass`
+
+The `dataclasses` module automatically generates `__init__`, `__repr__`, `__eq__`, and hashing methods based on type annotations:
+
+```python
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
+
+@dataclass(frozen=True)  # frozen=True creates an immutable, hashable record!
+class UserProfile:
+    user_id: int
+    email: str
+    roles: tuple[str, ...] = ("member",)
+    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+
+profile = UserProfile(user_id=42, email="dev@example.com")
+print(profile)
+# -> UserProfile(user_id=42, email='dev@example.com', roles=('member',), created_at=...)
+```
+
+## 5. Static Verification with `mypy`
+
+Type hints are ignored by the Python interpreter during execution. To actually verify correctness, run `mypy`:
+
+```bash
+# Install mypy
+pip install mypy
+
+# Run static analysis against your project
+mypy src/
+```
+
+If your code contains a type mismatch:
+```python
+def add(a: int, b: int) -> int:
+    return a + b
+
+add("10", 20)  # Type error!
+```
+`mypy` immediately flags it:
+`error: Argument 1 to "add" has incompatible type "str"; expected "int"`.
+
+## Common Mistakes & Anti-Patterns
+
+### Mistake 1: Relying on Type Hints for Runtime Validation
+Type hints do **not** cast or validate inputs at runtime! If a client passes an integer where a string is annotated, Python will not complain until an operation crashes:
+```python
+def greet(name: str):
+    print("Hello " + name)
+
+greet(123)  # Fails at runtime with TypeError: can only concatenate str to str
+```
+If runtime validation is required (e.g., parsing untrusted HTTP JSON bodies), use libraries like **Pydantic**.
+
+## Practice Exercises
+
+### Exercise 1: Generic Cache Protocol
+Define a `Protocol` named `CacheBackend[K, V]` with methods `get(key: K) -> V | None` and `set(key: K, value: V) -> None`. Then write a simple class `MemoryCache` that satisfies this protocol.
+
+### Exercise 2: Dataclass Serialization
+Create a `@dataclass` named `APIResponse` with fields `status: int`, `data: dict[str, Any]`, and `errors: list[str] = field(default_factory=list)`. Add a method `to_json() -> str` that serializes the dataclass using `json.dumps`.
+
+## Exercise Solutions
+
+```python
+from dataclasses import dataclass, field, asdict
+from typing import Protocol, TypeVar, Any
+import json
+
+# Solution 1:
+K = TypeVar("K")
+V = TypeVar("V")
+
+class CacheBackend(Protocol[K, V]):
+    def get(self, key: K) -> V | None: ...
+    def set(self, key: K, value: V) -> None: ...
+
+class MemoryCache:
+    def __init__(self):
+        self._store = {}
+    def get(self, key: str) -> str | None:
+        return self._store.get(key)
+    def set(self, key: str, value: str) -> None:
+        self._store[key] = value
+
+cache: CacheBackend[str, str] = MemoryCache()
+cache.set("session", "xyz987")
+print(cache.get("session"))  # -> 'xyz987'
+
+# Solution 2:
+@dataclass
+class APIResponse:
+    status: int
+    data: dict[str, Any]
+    errors: list[str] = field(default_factory=list)
+
+    def to_json(self) -> str:
+        return json.dumps(asdict(self))
+
+res = APIResponse(status=200, data={"token": "abc123xyz"})
+print(res.to_json())
+# -> {"status": 200, "data": {"token": "abc123xyz"}, "errors": []}
+```
+
+## Summary
+
+- Type hints provide machine-readable contracts verified ahead of time by static tools like `mypy`.
+- Use modern syntax like `int | None` and built-in generic collections (`list[str]`, `dict[str, int]`).
+- `typing.Protocol` implements structural subtyping (static duck typing).
+- `@dataclass` auto-generates boilerplate for structured, typed records.
+- Type hints do not validate data at runtime; pair with `pydantic` when handling external input.
+
+## Next Step
+
+Explore Python's built-in functions technical reference in [Built-in Functions Reference](/docs/python/reference/built-in-functions).

@@ -28,14 +28,14 @@ LeccionesLab Python Learning Progression
                                │
                                ▼
 ┌──────────────────────────────────────────────────────────────┐
-│  Track C: Modules, Packages & Standard Library (Upcoming)    │
+│  Track C: Modules, Packages & Standard Library (Available)   │
 │  Imports · Pathlib · Subprocess · Packaging & pyproject.toml  │
 └──────────────────────────────┬───────────────────────────────┘
                                │
                                ▼
 ┌──────────────────────────────────────────────────────────────┐
-│  Track D: Intermediate Language Features (Upcoming)          │
-│  First-Class Functions · Closures · Generators · Decorators  │
+│  Track D: Intermediate Language Features (Available)         │
+│  Comprehensions · Iterators · Closures · Decorators · Typing │
 └──────────────────────────────┬───────────────────────────────┘
                                │
                                ▼
@@ -83,6 +83,38 @@ Understanding memory layout, pointer arrays, and algorithmic complexity for core
 
 ---
 
+## Track C: Modules, Packages & Standard Library
+
+Code architecture, modular boundaries, system integration, and standard library tools.
+
+| Module | Level | Key Concepts | Status |
+|---|---|---|---|
+| **[Modules, Namespaces & Imports](/docs/python/modules/modules-and-imports)** | Intermediate | Import machinery, `sys.modules` caching, `sys.path` resolution order | **Available** |
+| **[Packages & Circular Imports](/docs/python/modules/packages-and-namespaces)** | Intermediate | Package initialization with `__init__.py`, `__all__`, cycle elimination | **Available** |
+| **[Executable Scripts & Entry Points](/docs/python/modules/scripts-and-entrypoints)** | Intermediate | `__name__ == '__main__'`, POSIX exit codes, `python -m`, console scripts | **Available** |
+| **[Standard Library Essentials](/docs/python/modules/standard-library)** | Intermediate | `pathlib.Path`, `json`, `csv.DictReader`, timezone-aware `datetime`, `collections` | **Available** |
+| **[Iteration & Functional Utilities](/docs/python/modules/iteration-utilities)** | Intermediate | `itertools` (chain, count, groupby) and `functools` (`lru_cache`, `partial`) | **Available** |
+| **[Command-Line Interfaces with argparse](/docs/python/modules/cli-with-argparse)** | Intermediate | Subparsers, flag groups, type converters, automated `--help` screens | **Available** |
+| **[Subprocess Execution & Security](/docs/python/modules/subprocess-execution)** | Intermediate | Safe process execution, argument lists, timeouts, preventing shell injection | **Available** |
+| **[Virtual Environments & Packaging](/docs/python/modules/environments-and-packaging)** | Intermediate | Isolated `.venv`, `pip`, PEP 621 `pyproject.toml`, wheels & PyPI builds | **Available** |
+
+---
+
+## Track D: Intermediate Language Features
+
+Deeper Python language semantics, execution mechanics, and static typing guarantees.
+
+| Module | Level | Key Concepts | Status |
+|---|---|---|---|
+| **[Comprehensions & Generator Expressions](/docs/python/intermediate/comprehensions)** | Intermediate | List/dict/set comprehensions, bytecode optimizations, streaming with `()` | **Available** |
+| **[Iterators, Generators & Lazy Evaluation](/docs/python/intermediate/iterators-and-generators)** | Intermediate | Iterator protocol (`__iter__`, `__next__`), `yield`, pipelines, `yield from` | **Available** |
+| **[Closures, Scopes & Decorators](/docs/python/intermediate/decorators-and-closures)** | Intermediate | Free variables, `__closure__`, `@wraps`, decorator factories, stacking | **Available** |
+| **[Context Managers & Resource Management](/docs/python/intermediate/context-managers)** | Intermediate | Deterministic cleanup with `with`, `__enter__`/`__exit__`, `contextlib`, `ExitStack` | **Available** |
+| **[Exception Hierarchies & Error Handling](/docs/python/intermediate/exception-handling)** | Intermediate | CPython hierarchy, `try-except-else-finally`, chaining `from`, `ExceptionGroup` | **Available** |
+| **[Type Hints & Static Type Analysis](/docs/python/intermediate/type-hints-and-static-typing)** | Intermediate | PEP 484, union `X | Y`, generic `Protocol`, dataclasses, `mypy` | **Available** |
+
+---
+
 ## Collection Complexity Cheat Sheet
 
 | Container | Operation | Average Complexity | Worst Case | Notes |
@@ -100,17 +132,6 @@ Understanding memory layout, pointer arrays, and algorithmic complexity for core
 ## Upcoming Curriculum Tracks
 
 The following advanced tracks are scheduled in subsequent content releases:
-
-### Track C: Modules & Standard Library (Upcoming)
-- Import machinery, `sys.path`, `__name__ == "__main__"`.
-- Essential standard library modules: `pathlib`, `os`, `sys`, `json`, `csv`, `datetime`, `collections`, `itertools`, `subprocess`, `argparse`.
-- Modern packaging with `pyproject.toml` and virtual environment management.
-
-### Track D: Intermediate Language Features (Upcoming)
-- First-class functions, closures, and lambda expressions.
-- Iterators, the iterator protocol (`__iter__`, `__next__`), and generator functions (`yield`, `yield from`).
-- Function and class decorators, parameterized decorators.
-- Exception hierarchies, context managers (`with`, `contextlib`), and static typing with `mypy`/`pyright`.
 
 ### Track E: Object-Oriented Programming (Upcoming)
 - Classes, instance vs. class attributes, static methods, and `@classmethod`.

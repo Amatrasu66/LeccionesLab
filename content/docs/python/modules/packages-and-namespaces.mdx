@@ -1,0 +1,226 @@
+---
+title: Packages, Organization & Circular Imports
+description: Architectural guide to Python packages, package initialization with __init__.py, relative imports, and resolving circular dependency deadlocks.
+---
+
+As Python codebases scale beyond a handful of files, organizing modules into directory hierarchies becomes essential. A **package** in Python is simply a directory containing modules and an optional `__init__.py` file that allows modules to be imported with dotted notation (e.g., `import mypackage.submodule`).
+
+Understanding package initialization, relative vs. absolute imports, and circular dependency resolution is a core skill for any professional Python engineer.
+
+## Learning Objectives
+
+By completing this lesson, you will be able to:
+- Structure multi-module Python projects into clean, maintainable packages.
+- Utilize `__init__.py` for package initialization, public API definition, and `__all__` exports.
+- Understand the distinction between Regular Packages and PEP 420 Namespace Packages.
+- Safely navigate relative imports (`from . import helper`, `from ..core import utils`).
+- Identify the symptoms and root causes of circular import deadlocks (`ImportError` / `AttributeError`).
+- Refactor circular dependencies using architectural extraction, local imports, or dependency inversion.
+
+## Prerequisites
+
+- [Modules, Namespaces & Import Machinery](/docs/python/modules/modules-and-imports)
+- [Functions & Scope](/docs/python/basics/functions)
+
+## 1. Anatomy of a Python Package
+
+A classic Python package directory layout looks like this:
+
+```text
+ecommerce/
+├── __init__.py          # Marks 'ecommerce' as a package; runs upon import
+├── config.py            # ecommerce.config
+├── database.py          # ecommerce.database
+└── orders/              # Subpackage: ecommerce.orders
+    ├── __init__.py      # Marks 'orders' as a subpackage
+    ├── models.py        # ecommerce.orders.models
+    └── processor.py     # ecommerce.orders.processor
+```
+
+When someone executes `import ecommerce`, Python executes `ecommerce/__init__.py`.
+
+### What Belongs in `__init__.py`?
+
+`__init__.py` serves three main purposes:
+1. **Package Initialization**: Executing setup code required by the entire package.
+2. **Public API Exposition**: Exposing nested symbols at package root level for ergonomic developer usage.
+3. **`__all__` Declaration**: Restricting what symbols are exported if a client uses `from ecommerce import *`.
+
+```python
+# ecommerce/__init__.py
+"""E-Commerce Core Package."""
+
+# Expose primary entrypoints at package level
+from .orders.models import Order
+from .orders.processor import process_payment
+
+__all__ = ["Order", "process_payment"]
+__version__ = "1.0.0"
+```
+
+Consumers can now cleanly write:
+```python
+from ecommerce import Order, process_payment
+```
+without needing to memorize internal directory paths like `ecommerce.orders.processor`.
+
+## 2. Absolute vs Relative Imports
+
+Within a package, modules can reference each other using either **absolute** or **relative** imports.
+
+### Absolute Imports
+Absolute imports specify the full path from the project root or `sys.path`:
+```python
+# Inside ecommerce/orders/processor.py:
+from ecommerce.database import get_db_connection
+from ecommerce.config import MAX_RETRY_COUNT
+```
+*Benefits*: Unambiguous, readable, robust against file relocations across subpackages. Strongly recommended by PEP 8.
+
+### Explicit Relative Imports
+Relative imports use leading periods to represent relative levels:
+- `.` = current package directory
+- `..` = parent package directory
+- `...` = grandparent package directory
+
+```python
+# Inside ecommerce/orders/processor.py:
+from .models import Order            # Same folder (ecommerce/orders)
+from ..database import get_db_connection # Parent folder (ecommerce)
+from ..config import MAX_RETRY_COUNT
+```
+
+> **Warning**: Relative imports only work when files are executed as part of a package (e.g. `python -m ecommerce.orders.processor`). Running `python processor.py` directly sets `__name__ == "__main__"` without package context, triggering:
+> `ImportError: attempted relative import with no known parent package`.
+
+## 3. Circular Import Pitfalls & Solutions
+
+A **circular import** occurs when Module A imports Module B, but Module B (directly or indirectly) imports Module A.
+
+### The Problem
+
+```python
+# File: billing.py
+from user import get_user_tier
+
+def calculate_invoice(user_id: int):
+    tier = get_user_tier(user_id)
+    return 100 if tier == "pro" else 0
+
+def get_billing_status(user_id: int):
+    return "active"
+```
+
+```python
+# File: user.py
+from billing import get_billing_status
+
+def get_user_tier(user_id: int):
+    status = get_billing_status(user_id)
+    return "pro" if status == "active" else "free"
+```
+
+If a script runs `import billing`:
+1. Python starts executing `billing.py`.
+2. Line 1: `from user import get_user_tier` pauses `billing.py` and starts executing `user.py`.
+3. Inside `user.py`, Line 1: `from billing import get_billing_status`.
+4. `billing` is already in `sys.modules` (marked as partially initialized), so Python looks for `get_billing_status` inside `billing`.
+5. But `billing.py` paused at line 1 before reaching the definition of `get_billing_status`!
+6. Python raises: `ImportError: cannot import name 'get_billing_status' from partially initialized module 'billing'`.
+
+### Resolutions for Circular Imports
+
+#### Strategy 1: Extract Shared Interfaces / Common Module (Preferred)
+Move the shared data models, types, or utilities into a third module (`types.py` or `models.py`) that neither module depends upon.
+
+```text
+billing.py ───┐
+              ├──▶ common_types.py (independent)
+user.py ──────┘
+```
+
+#### Strategy 2: Import the Module, Not the Symbol
+Instead of `from billing import get_billing_status`, use `import billing` and reference `billing.get_billing_status` at runtime:
+```python
+# user.py
+import billing
+
+def get_user_tier(user_id: int):
+    # Evaluated at runtime when billing has finished initializing
+    return "pro" if billing.get_billing_status(user_id) == "active" else "free"
+```
+
+#### Strategy 3: Deferred (Local) Import
+Move the import inside the function that needs it:
+```python
+def calculate_invoice(user_id: int):
+    # Only imported when calculate_invoice is called
+    from user import get_user_tier
+    tier = get_user_tier(user_id)
+    return 100 if tier == "pro" else 0
+```
+
+## Practice Exercises
+
+### Exercise 1: Package Validator
+Write a Python function `check_export_coverage(pkg_dict, all_list)` that verifies whether all names listed in `__all__` actually exist in `pkg_dict`. Return a tuple of `(is_valid: bool, missing_names: list[str])`.
+
+### Exercise 2: Dependency Graph Cycle Detector
+Given a dictionary representing module import dependencies (e.g., `{"A": ["B"], "B": ["C"], "C": ["A"]}`), write a function `has_circular_dependency(deps: dict[str, list[str]]) -> bool` that detects if there is any circular import loop using DFS.
+
+## Exercise Solutions
+
+```python
+# Solution 1:
+def check_export_coverage(pkg_dict: dict, all_list: list[str]) -> tuple[bool, list[str]]:
+    missing = [name for name in all_list if name not in pkg_dict]
+    return (len(missing) == 0, missing)
+
+# Test 1:
+sample_module = {"Order": 1, "process": 2, "__all__": ["Order", "process", "Invoice"]}
+valid, missing = check_export_coverage(sample_module, sample_module["__all__"])
+print(valid, missing) # -> False, ['Invoice']
+
+# Solution 2:
+def has_circular_dependency(deps: dict[str, list[str]]) -> bool:
+    # 0 = unvisited, 1 = visiting (in recursion stack), 2 = visited
+    state = {node: 0 for node in deps}
+
+    def dfs(node: str) -> bool:
+        state[node] = 1 # visiting
+        for neighbor in deps.get(node, []):
+            if neighbor not in state:
+                continue
+            if state[neighbor] == 1:
+                return True # Cycle detected!
+            if state[neighbor] == 0:
+                if dfs(neighbor):
+                    return True
+        state[node] = 2 # visited
+        return False
+
+    for node in deps:
+        if state[node] == 0:
+            if dfs(node):
+                return True
+    return False
+
+# Test 2:
+graph_with_cycle = {"A": ["B"], "B": ["C"], "C": ["A"]}
+print(has_circular_dependency(graph_with_cycle))  # -> True
+
+graph_clean = {"A": ["B", "C"], "B": ["C"], "C": []}
+print(has_circular_dependency(graph_clean))       # -> False
+```
+
+## Summary
+
+- Packages are directories containing Python modules, configured via `__init__.py`.
+- `__init__.py` can export a curated public API using `__all__` and clean top-level imports.
+- Absolute imports are standard and preferred for clarity.
+- Circular imports happen when interdependent modules access partially initialized attributes.
+- Resolve circular imports by extracting shared dependencies, importing modules instead of symbols, or deferring imports into functions.
+
+## Next Step
+
+Explore standalone script design, CLI execution, and `sys.exit` in [Executable Scripts & Entry Points](/docs/python/modules/scripts-and-entrypoints).

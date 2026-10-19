@@ -1,0 +1,202 @@
+---
+title: Comprehensions & Generator Expressions
+description: Master Python comprehensions across lists, dictionaries, and sets, alongside memory-efficient generator expressions and bytecode optimizations.
+---
+
+Comprehensions are one of Python's most beloved and distinctive syntactic features. They provide a concise, declarative syntax for transforming, filtering, and mapping iterables into new collections.
+
+Beyond aesthetic cleanliness, comprehensions execute significantly faster than manual `for`-loops because CPython optimizes them at the bytecode level with specialized C-speed accumulator instructions (`LIST_APPEND`, `MAP_ADD`, `SET_ADD`).
+
+## Learning Objectives
+
+By completing this lesson, you will be able to:
+- Construct list, dictionary, and set comprehensions with filtering predicates.
+- Flatten multi-dimensional matrices using properly ordered nested comprehensions.
+- Explain why comprehensions execute faster than manual `.append()` loops in CPython.
+- Use **generator expressions** with `()` to stream massive datasets with $O(1)$ memory.
+- Avoid common anti-patterns like executing side-effects inside comprehensions.
+
+## Prerequisites
+
+- [Lists & Dynamic Arrays](/docs/python/collections/lists)
+- [Dictionaries & Hash Tables](/docs/python/collections/dictionaries)
+- [Sets & Unique Collections](/docs/python/collections/sets)
+
+## 1. The Three Collection Comprehensions
+
+Every comprehension follows a universal pattern:
+`[ <expression> for <item> in <iterable> if <condition> ]`
+
+### A. List Comprehensions
+Transform and filter sequences into new lists:
+
+```python
+numbers = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+
+# Filter even numbers, square them
+even_squares = [x ** 2 for x in numbers if x % 2 == 0]
+print(even_squares)  # -> [4, 16, 36, 64, 100]
+
+# If-Else expression in the transformation phase (Ternary operator)
+labels = ["even" if x % 2 == 0 else "odd" for x in numbers[:4]]
+print(labels)  # -> ['odd', 'even', 'odd', 'even']
+```
+
+### B. Dictionary Comprehensions
+Construct key-value mappings from arbitrary iterables:
+
+```python
+users = [
+    {"id": 101, "name": "Alice", "role": "admin"},
+    {"id": 102, "name": "Bob", "role": "developer"},
+    {"id": 103, "name": "Charlie", "role": "developer"},
+]
+
+# Fast O(1) index lookup map by user_id
+user_by_id = {u["id"]: u for u in users}
+print(user_by_id[102]["name"])  # -> 'Bob'
+
+# Invert a dictionary (swap keys and values)
+ranks = {"gold": 1, "silver": 2, "bronze": 3}
+rank_to_metal = {rank: metal for metal, rank in ranks.items()}
+print(rank_to_metal[1])  # -> 'gold'
+```
+
+### C. Set Comprehensions
+Automatically deduplicate extracted items:
+
+```python
+sentences = ["Hello world", "Python is fast", "world of code"]
+unique_words = {word.lower() for s in sentences for word in s.split()}
+print(sorted(unique_words))
+# -> ['code', 'fast', 'hello', 'is', 'of', 'python', 'world']
+```
+
+## 2. Nested Comprehensions & Matrix Flattening
+
+The order of `for` clauses in a comprehension matches the order of nested `for` statements in normal Python:
+
+```python
+matrix = [
+    [1, 2, 3],
+    [4, 5, 6],
+    [7, 8, 9]
+]
+
+# Flattening a 2D matrix into a 1D sequence:
+# Outer loop: 'for row in matrix'
+# Inner loop: 'for val in row'
+flattened = [val for row in matrix for val in row]
+print(flattened)  # -> [1, 2, 3, 4, 5, 6, 7, 8, 9]
+
+# Transposing a matrix (swap rows and columns)
+transposed = [[row[col] for row in matrix] for col in range(len(matrix[0]))]
+print(transposed)
+# -> [[1, 4, 7], [2, 5, 8], [3, 6, 9]]
+```
+
+## 3. Bytecode Optimization: Why Comprehensions are Faster
+
+Consider these two approaches to building a list of squares:
+
+```python
+# Approach A: Manual Loop with append()
+squares = []
+for x in range(1000):
+    squares.append(x * x)
+
+# Approach B: List Comprehension
+squares = [x * x for x in range(1000)]
+```
+
+In Approach A, Python must look up the attribute `.append` on the list object on every single iteration and invoke a function call frame.
+
+In Approach B, CPython compiles the comprehension into a specialized C-level bytecode loop using the `LIST_APPEND` opcode, completely bypassing Python function call overhead and attribute lookup. Comprehensions are typically **20% to 35% faster** than `.append()` loops.
+
+## 4. Generator Expressions: Constant Memory Streaming
+
+If you only need to iterate over the transformed values once (e.g. passing to `sum()`, `min()`, `max()`, or a database writer), generating a full list in RAM is wasteful.
+
+Replacing `[]` with `()` creates a **generator expression**:
+
+```python
+import sys
+
+# List comprehension: Eagerly creates 1,000,000 integers in memory
+eager_list = [x * 2 for x in range(1_000_000)]
+print("List memory:", sys.getsizeof(eager_list), "bytes")  # ~8.4 Megabytes!
+
+# Generator expression: Lazily computes items on-the-fly
+lazy_gen = (x * 2 for x in range(1_000_000))
+print("Generator memory:", sys.getsizeof(lazy_gen), "bytes")  # ~200 Bytes!
+
+# Passing directly to reduction functions (outer parentheses can be omitted)
+total = sum(x * 2 for x in range(100))
+print("Sum:", total)  # -> 9900
+```
+
+## Common Mistakes & Anti-Patterns
+
+### Mistake 1: Using Comprehensions for Side Effects
+Never use a list comprehension if you are not using the resulting list. Allocating and then discarding a list just to call a function wastes memory and confuses teammates:
+```python
+# ❌ ANTI-PATTERN: List allocated just for side effects
+[print(user.name) for user in users]
+
+# ✅ CORRECT: Clean, readable for-loop
+for user in users:
+    print(user.name)
+```
+
+### Mistake 2: Hyper-Nested "Clever" Comprehensions
+If a comprehension exceeds two `for` loops or contains complex branching, refactor it into a standard `for` loop or a helper generator. Readability counts.
+
+## Practice Exercises
+
+### Exercise 1: Dictionary Filter
+Write a function `filter_active_users(users_db: dict[str, dict]) -> dict[str, str]` that takes a dictionary where keys are usernames and values are user info dicts (containing `'status'` and `'email'`). Return a new dictionary of `{username: email}` for users where `status == 'active'`.
+
+### Exercise 2: Pyramidal Matrix Generator
+Write a function `generate_multiplication_table(n: int) -> list[list[int]]` using nested list comprehensions that produces an $n \times n$ multiplication table where `cell[r][c] = (r+1) * (c+1)`.
+
+## Exercise Solutions
+
+```python
+# Solution 1:
+def filter_active_users(users_db: dict[str, dict]) -> dict[str, str]:
+    return {
+        username: info["email"]
+        for username, info in users_db.items()
+        if info.get("status") == "active"
+    }
+
+sample_users = {
+    "alice": {"status": "active", "email": "alice@example.com"},
+    "bob": {"status": "suspended", "email": "bob@example.com"},
+    "charlie": {"status": "active", "email": "charlie@example.com"},
+}
+print(filter_active_users(sample_users))
+# -> {'alice': 'alice@example.com', 'charlie': 'charlie@example.com'}
+
+# Solution 2:
+def generate_multiplication_table(n: int) -> list[list[int]]:
+    return [[(r + 1) * (c + 1) for c in range(n)] for r in range(n)]
+
+table = generate_multiplication_table(3)
+for row in table:
+    print(row)
+# -> [1, 2, 3]
+# -> [2, 4, 6]
+# -> [3, 6, 9]
+```
+
+## Summary
+
+- List, dictionary, and set comprehensions provide declarative, optimized syntax for transforming collections.
+- CPython's bytecode executes comprehensions faster than manual `.append()` loops.
+- Generator expressions with `()` produce lazy iterators that process datasets with $O(1)$ memory.
+- Never use comprehensions purely for side-effects like printing or saving to databases.
+
+## Next Step
+
+Dive deep into Python's underlying iterator mechanics and state machines in [Iterators, Generators & Lazy Evaluation](/docs/python/intermediate/iterators-and-generators).

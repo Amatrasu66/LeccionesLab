@@ -9,47 +9,9 @@ interface SearchResultItem {
   type: 'page' | 'heading' | 'text';
   content: string;
   url: string;
+  breadcrumbs?: string[];
+  description?: string;
 }
-
-interface DefaultQuickLink {
-  title: string;
-  description: string;
-  url: string;
-  category: string;
-}
-
-const DEFAULT_QUICK_LINKS: DefaultQuickLink[] = [
-  {
-    title: 'Python Overview',
-    description: 'Execution mental models, heap references, and curriculum roadmap.',
-    url: '/docs/python',
-    category: 'Documentation',
-  },
-  {
-    title: 'Getting Started with Python',
-    description: 'Setting up Python 3.12+, venv isolation, and running scripts.',
-    url: '/docs/python/getting-started',
-    category: 'Guide',
-  },
-  {
-    title: 'Variables & Assignment',
-    description: 'Object references, mutability, shallow vs. deep copy semantics.',
-    url: '/docs/python/basics/variables',
-    category: 'Tutorial',
-  },
-  {
-    title: 'Functions & Scope',
-    description: 'Def signatures, *args, **kwargs unpacking, closures, LEGB scope rules.',
-    url: '/docs/python/basics/functions',
-    category: 'Tutorial',
-  },
-  {
-    title: 'Built-in Functions Reference',
-    description: 'Technical signatures for len(), zip(), map(), and enumerate().',
-    url: '/docs/python/reference/built-in-functions',
-    category: 'Reference',
-  },
-];
 
 interface SearchModalProps {
   isOpen: boolean;
@@ -59,11 +21,34 @@ interface SearchModalProps {
 export function SearchModal({ isOpen, onClose }: SearchModalProps) {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<SearchResultItem[]>([]);
+  const [defaultItems, setDefaultItems] = useState<SearchResultItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLUListElement>(null);
+
+  // Load published pages dynamically for initial suggestions
+  useEffect(() => {
+    let isMounted = true;
+    async function loadDefaultSuggestions() {
+      try {
+        const res = await fetch('/api/search');
+        if (res.ok) {
+          const data: SearchResultItem[] = await res.json();
+          if (isMounted && Array.isArray(data) && data.length > 0) {
+            setDefaultItems(data);
+          }
+        }
+      } catch {
+        // Silently preserve empty array
+      }
+    }
+    loadDefaultSuggestions();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   // Live search fetcher backed by /api/search
   const searchDocs = useCallback(async (q: string) => {
@@ -120,12 +105,15 @@ export function SearchModal({ isOpen, onClose }: SearchModalProps) {
     }
   }, [isOpen]);
 
-  // Reset selected index when results change
+  // Active items list: search results if query typed, otherwise dynamic suggested docs
+  const isQueryActive = query.trim().length > 0;
+  const currentList = isQueryActive ? results : defaultItems;
+  const activeItemsCount = currentList.length;
+
+  // Reset selected index when results or query changes
   useEffect(() => {
     setSelectedIndex(0);
   }, [query, results]);
-
-  const activeItemsCount = query.trim() ? results.length : DEFAULT_QUICK_LINKS.length;
 
   // Keyboard navigation & accessibility controls
   useEffect(() => {
@@ -147,25 +135,17 @@ export function SearchModal({ isOpen, onClose }: SearchModalProps) {
         }
       } else if (e.key === 'Enter') {
         e.preventDefault();
-        if (query.trim()) {
-          const item = results[selectedIndex];
-          if (item) {
-            router.push(item.url);
-            onClose();
-          }
-        } else {
-          const item = DEFAULT_QUICK_LINKS[selectedIndex];
-          if (item) {
-            router.push(item.url);
-            onClose();
-          }
+        const item = currentList[selectedIndex];
+        if (item) {
+          router.push(item.url);
+          onClose();
         }
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, query, results, selectedIndex, activeItemsCount, router, onClose]);
+  }, [isOpen, currentList, selectedIndex, activeItemsCount, router, onClose]);
 
   // Ensure selected item scrolls into view
   useEffect(() => {
@@ -179,12 +159,30 @@ export function SearchModal({ isOpen, onClose }: SearchModalProps) {
 
   if (!isOpen) return null;
 
-  // Derive human-readable section breadcrumb from URL
-  const getBreadcrumb = (url: string) => {
-    const cleanUrl = url.split('#')[0];
-    if (cleanUrl.includes('reference')) return 'Reference';
-    if (cleanUrl.includes('basics')) return 'Fundamentals';
-    if (cleanUrl.includes('getting-started')) return 'Getting Started';
+  // Derive human-readable section breadcrumb dynamically from metadata or URL path
+  const formatBreadcrumb = (item: SearchResultItem): string => {
+    if (item.breadcrumbs && item.breadcrumbs.length > 0) {
+      const deduplicated = item.breadcrumbs.filter(
+        (b, idx, arr) => b && (idx === 0 || b !== arr[idx - 1])
+      );
+      const relevant = deduplicated.filter((b) => b !== 'Documentation');
+      if (relevant.length > 1) {
+        return relevant.slice(1).join(' / ');
+      }
+      if (relevant.length === 1) {
+        return relevant[0];
+      }
+    }
+
+    const cleanUrl = item.url.split('#')[0];
+    const segments = cleanUrl.split('/').filter(Boolean);
+    if (segments.length >= 3) {
+      const sectionSlug = segments[2];
+      return sectionSlug
+        .split('-')
+        .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+        .join(' ');
+    }
     return 'Documentation';
   };
 
@@ -234,18 +232,21 @@ export function SearchModal({ isOpen, onClose }: SearchModalProps) {
 
         {/* Results List Viewport */}
         <div className="max-h-[380px] overflow-y-auto p-2">
-          {query.trim() === '' ? (
-            // Default Navigation Suggestions
+          {!isQueryActive ? (
+            // Dynamic Suggestions from Published Documentation Index
             <div className="py-2">
               <div className="px-3 pb-2 text-[11px] font-semibold uppercase tracking-wider text-[#8B8495]">
                 Suggested Documentation
               </div>
               <ul ref={listRef} role="listbox" className="space-y-1">
-                {DEFAULT_QUICK_LINKS.map((item, index) => {
+                {currentList.map((item, index) => {
                   const isSelected = index === selectedIndex;
+                  const breadcrumb = formatBreadcrumb(item);
+                  const isReference = item.url.includes('reference');
+
                   return (
                     <li
-                      key={item.url}
+                      key={item.id || item.url}
                       role="option"
                       aria-selected={isSelected}
                     >
@@ -262,7 +263,7 @@ export function SearchModal({ isOpen, onClose }: SearchModalProps) {
                         }`}
                       >
                         <div className="mt-0.5 shrink-0 text-[#C4B5FD]">
-                          {item.category === 'Reference' ? (
+                          {isReference ? (
                             <Code2 className="h-4 w-4" aria-hidden="true" />
                           ) : (
                             <BookOpen className="h-4 w-4" aria-hidden="true" />
@@ -271,15 +272,17 @@ export function SearchModal({ isOpen, onClose }: SearchModalProps) {
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2">
                             <span className="text-sm font-medium text-[#F4F0F7] truncate">
-                              {item.title}
+                              {item.content}
                             </span>
                             <span className="text-[11px] text-[#8B8495] shrink-0">
-                              · {item.category}
+                              · {breadcrumb}
                             </span>
                           </div>
-                          <p className="text-xs text-[#8B8495] line-clamp-1 mt-0.5">
-                            {item.description}
-                          </p>
+                          {item.description && (
+                            <p className="text-xs text-[#8B8495] line-clamp-1 mt-0.5">
+                              {item.description}
+                            </p>
+                          )}
                         </div>
                         <ArrowRight
                           className={`h-3.5 w-3.5 shrink-0 self-center transition-opacity ${
@@ -300,15 +303,15 @@ export function SearchModal({ isOpen, onClose }: SearchModalProps) {
                 No results found for &ldquo;{query}&rdquo;
               </p>
               <p className="text-xs text-[#8B8495] max-w-xs mx-auto leading-relaxed">
-                Try searching for concepts like &ldquo;variables&rdquo;, &ldquo;functions&rdquo;, or &ldquo;built-in&rdquo;.
+                Try searching for concepts like &ldquo;lists&rdquo;, &ldquo;dictionaries&rdquo;, &ldquo;tuples&rdquo;, or &ldquo;sets&rdquo;.
               </p>
             </div>
           ) : (
-            // Live Search Results
+            // Live Search Results backed by Fumadocs Search Server
             <ul ref={listRef} role="listbox" className="space-y-1">
               {results.map((item, index) => {
                 const isSelected = index === selectedIndex;
-                const breadcrumb = getBreadcrumb(item.url);
+                const breadcrumb = formatBreadcrumb(item);
 
                 return (
                   <li
@@ -378,7 +381,7 @@ export function SearchModal({ isOpen, onClose }: SearchModalProps) {
               <kbd className="font-mono text-[#F4F0F7]">ESC</kbd> close
             </span>
           </div>
-          <span>Published Docs Index</span>
+          <span>Dynamic Docs Index</span>
         </div>
       </div>
     </div>

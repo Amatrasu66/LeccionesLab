@@ -1,0 +1,238 @@
+---
+title: Exception Hierarchies & Robust Error Handling
+description: Production guide to Python's exception hierarchy, try-except-else-finally control flow, custom exception classes, exception chaining, and Python 3.11+ ExceptionGroups.
+---
+
+In Python, errors are handled not through return codes or sentinel values (like `-1` or `NULL`), but via **Exceptions**. When an abnormal event occurs, Python halts normal execution and raises an exception object.
+
+Writing fault-tolerant software requires understanding the CPython exception class inheritance tree, using the complete `try-except-else-finally` lifecycle, chaining causes without losing diagnostic tracebacks, and avoiding dangerous anti-patterns like bare `except:`.
+
+## Learning Objectives
+
+By completing this lesson, you will be able to:
+- Navigate CPython's exception hierarchy and explain why `Exception` differs from `BaseException`.
+- Utilize the complete `try`, `except`, `else`, and `finally` control flow pattern.
+- Design domain-specific custom exception classes with structured metadata.
+- Preserve debugging context using explicit exception chaining with `raise ... from err`.
+- Suppress implicit context when needed using `raise ... from None`.
+- Handle concurrent, multiple failures using Python 3.11+ `ExceptionGroup` and `except*`.
+- Eliminate dangerous broad exceptions and silent error swallowing.
+
+## Prerequisites
+
+- [Functions & Scope](/docs/python/basics/functions)
+- [Context Managers & Resource Management](/docs/python/intermediate/context-managers)
+
+## 1. The CPython Exception Hierarchy
+
+All built-in exceptions inherit from `BaseException`. However, normal application errors inherit from **`Exception`**:
+
+```text
+BaseException
+ ├── SystemExit                   # Raised by sys.exit()
+ ├── KeyboardInterrupt            # Triggered by Ctrl+C
+ ├── GeneratorExit                # Raised when a generator is closed
+ └── Exception                    # Base class for ALL standard errors!
+      ├── ArithmeticError
+      │    └── ZeroDivisionError
+      ├── LookupError
+      │    ├── IndexError
+      │    └── KeyError
+      ├── OSError
+      │    ├── FileNotFoundError
+      │    └── PermissionError
+      ├── TypeError
+      └── ValueError
+```
+
+### Why You Must Never Catch `BaseException`
+If you write `except BaseException:` or a bare `except:`, your script will intercept `KeyboardInterrupt` and `SystemExit`. This makes the process impossible to kill via `Ctrl+C` or normal termination signals!
+
+Always inherit your custom exceptions from `Exception`, and catch `Exception` (or specific sub-classes).
+
+## 2. Complete Control Flow: `try-except-else-finally`
+
+Python provides four distinct clauses for exception handling:
+
+```python
+def parse_and_divide(raw_a: str, raw_b: str):
+    result = None
+    try:
+        # 1. Risky operations that might raise exceptions
+        num_a = int(raw_a)
+        num_b = int(raw_b)
+        result = num_a / num_b
+    except ValueError as ve:
+        # 2. Handles bad input formatting
+        print(f"Parsing error: inputs must be valid integers ({ve})")
+    except ZeroDivisionError:
+        # 2. Handles division by zero
+        print("Math error: denominator cannot be zero")
+    else:
+        # 3. Executes ONLY if NO exception was raised in try
+        print(f"Success! {num_a} / {num_b} = {result}")
+    finally:
+        # 4. ALWAYS executes, regardless of success, failure, or return
+        print("Cleanup completed.")
+    
+    return result
+
+parse_and_divide("10", "2")
+# -> Success! 10 / 2 = 5.0
+# -> Cleanup completed.
+
+parse_and_divide("10", "0")
+# -> Math error: denominator cannot be zero
+# -> Cleanup completed.
+```
+
+### The Power of the `else:` Block
+Placing code in the `else:` block guarantees that it only runs if the `try:` block succeeded, while preventing the `except:` handlers from catching unexpected errors in the success logic itself.
+
+## 3. Creating Domain-Specific Custom Exceptions
+
+Well-designed software defines custom exception hierarchies for its domain (e.g. `PaymentError`, `ValidationError`):
+
+```python
+class AppError(Exception):
+    """Base exception for all errors in our application."""
+    pass
+
+class ValidationError(AppError):
+    """Raised when an entity fails business validation rules."""
+    def __init__(self, field: str, message: str, invalid_value=None):
+        super().__init__(f"Field '{field}': {message}")
+        self.field = field
+        self.invalid_value = invalid_value
+
+# Raising and catching custom exceptions:
+def validate_age(age: int):
+    if age < 0:
+        raise ValidationError("age", "Must be non-negative", invalid_value=age)
+
+try:
+    validate_age(-5)
+except ValidationError as err:
+    print(f"Error on {err.field} (Value: {err.invalid_value}): {err}")
+# -> Error on age (Value: -5): Field 'age': Must be non-negative
+```
+
+## 4. Exception Chaining: `raise ... from`
+
+When handling one exception by raising another, you should preserve the original cause for debugging using **`raise NewException from original_exception`** (PEP 3134):
+
+```python
+import json
+
+class ConfigParseError(Exception):
+    """Raised when parsing system configuration fails."""
+    pass
+
+def load_settings(raw_json: str):
+    try:
+        return json.loads(raw_json)
+    except json.JSONDecodeError as err:
+        # Explicitly chain the root cause
+        raise ConfigParseError("Failed to parse settings.json") from err
+
+# When an error occurs, the traceback shows:
+# json.decoder.JSONDecodeError: Expecting value...
+# The above exception was the direct cause of the following exception:
+# ConfigParseError: Failed to parse settings.json
+```
+
+### Suppressing Context with `raise ... from None`
+If the original exception exposes sensitive internal details (e.g. database credentials or internal server IPs) that should not be visible to clients, suppress it:
+```python
+raise PermissionError("Access Denied") from None
+```
+
+## 5. Python 3.11+: ExceptionGroup and `except*`
+
+When running concurrent tasks (e.g., using `asyncio.TaskGroup`), multiple independent exceptions can occur simultaneously. Python 3.11 introduced `ExceptionGroup` and the `except*` pattern:
+
+```python
+# Simulated ExceptionGroup containing multiple failures:
+eg = ExceptionGroup(
+    "Batch processing failed",
+    [ValueError("Invalid ID"), KeyError("Missing token"), ValueError("Negative price")]
+)
+
+try:
+    raise eg
+except* ValueError as ve_group:
+    print(f"Caught {len(ve_group.exceptions)} ValueError(s)")
+except* KeyError as ke_group:
+    print(f"Caught {len(ke_group.exceptions)} KeyError(s)")
+```
+
+## Common Mistakes & Anti-Patterns
+
+### Mistake 1: Bare `except:` or `except Exception: pass` (The "Pokemon" Anti-Pattern)
+Silently catching and discarding every error hides syntax errors, typos in variable names, and critical bugs:
+```python
+# ❌ LETHAL ANTI-PATTERN:
+try:
+    process_data()
+except:
+    pass  # Silently swallows EVERYTHING including NameError, KeyboardInterrupt!
+```
+
+## Practice Exercises
+
+### Exercise 1: Safe Integer Converter
+Write a function `safe_int_conversion(val, default_val=0)` that attempts to convert `val` to an `int`. If a `(ValueError, TypeError)` occurs, return `default_val`.
+
+### Exercise 2: Retry with Backoff
+Write a function `retry_operation(operation, max_retries: int = 3)` that executes a zero-argument callable `operation`. If it raises an `OSError`, retry up to `max_retries` times. If all retries fail, raise a custom `ServiceUnavailableError` chained `from` the final `OSError`.
+
+## Exercise Solutions
+
+```python
+# Solution 1:
+def safe_int_conversion(val, default_val: int = 0) -> int:
+    try:
+        return int(val)
+    except (ValueError, TypeError):
+        return default_val
+
+print(safe_int_conversion("42"))      # -> 42
+print(safe_int_conversion("abc", -1)) # -> -1
+print(safe_int_conversion(None, 0))   # -> 0
+
+# Solution 2:
+class ServiceUnavailableError(Exception):
+    pass
+
+def retry_operation(operation, max_retries: int = 3):
+    last_err = None
+    for attempt in range(1, max_retries + 1):
+        try:
+            return operation()
+        except OSError as err:
+            last_err = err
+    raise ServiceUnavailableError(f"Operation failed after {max_retries} attempts") from last_err
+
+# Verification:
+def failing_socket():
+    raise ConnectionRefusedError("Port closed")
+
+try:
+    retry_operation(failing_socket, max_retries=2)
+except ServiceUnavailableError as exc:
+    print("Caught:", exc)
+    print("Direct cause:", type(exc.__cause__))
+# -> Caught: Operation failed after 2 attempts
+# -> Direct cause: <class 'ConnectionRefusedError'>
+```
+
+## Summary
+
+- Catch `Exception`, never `BaseException`, to avoid intercepting `KeyboardInterrupt` and `SystemExit`.
+- Use `try-except-else-finally` to isolate error-prone operations from success-path code.
+- Always preserve debuggability with `raise CustomError from original_error`.
+- Never silently swallow exceptions with bare `except: pass`.
+
+## Next Step
+
+Learn modern gradual static typing and contract validation in [Type Hints & Static Type Analysis](/docs/python/intermediate/type-hints-and-static-typing).

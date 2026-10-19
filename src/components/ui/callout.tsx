@@ -2,7 +2,7 @@ import React from 'react';
 import { Info, AlertTriangle, AlertCircle, CheckCircle2, Lightbulb } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
-export type CalloutType = 'note' | 'tip' | 'warning' | 'danger' | 'success';
+export type CalloutType = 'note' | 'tip' | 'warning' | 'danger' | 'success' | 'info' | 'error';
 
 interface CalloutProps {
   type?: CalloutType;
@@ -50,7 +50,9 @@ export function Callout({
     },
   };
 
-  const config = configs[type];
+  const normalizedType =
+    type === 'info' ? 'note' : type === 'error' ? 'danger' : (type in configs ? type : 'note');
+  const config = configs[normalizedType as keyof typeof configs] || configs.note;
   const Icon = config.icon;
 
   return (

@@ -1,0 +1,227 @@
+---
+title: Closures, Scopes & Decorators
+description: Master lexical scoping, free variables, closures, function decorators, functools.wraps, parameterized decorator factories, and class decorators in Python.
+---
+
+In Python, functions are **first-class citizens**: they can be passed as arguments, assigned to variables, returned from other functions, and stored in data structures.
+
+This property enables two of Python's most expressive paradigms: **closures** (functions that remember the variables from their enclosing scope even after that scope has finished executing) and **decorators** (syntactic wrappers that extend or alter the behavior of callable objects without modifying their source code).
+
+## Learning Objectives
+
+By completing this lesson, you will be able to:
+- Explain lexical scope, the LEGB resolution rule, and free variables.
+- Inspect closure cell bindings using the `__closure__` attribute.
+- Implement the canonical decorator pattern using `@` syntax.
+- Preserve original function metadata (`__name__`, `__doc__`, type hints) with `functools.wraps`.
+- Build **parameterized decorator factories** that accept configuration arguments.
+- Understand decorator stacking and execution order.
+- Implement class-based decorators using the `__call__` magic method.
+
+## Prerequisites
+
+- [Functions & Scope](/docs/python/basics/functions)
+- [Iteration & Functional Utilities](/docs/python/modules/iteration-utilities)
+
+## 1. Lexical Scope and Closures
+
+Python resolves names using the **LEGB rule**: **L**ocal $\to$ **E**nclosing $\to$ **G**lobal $\to$ **B**uilt-in.
+
+A **closure** is created when an inner function references a variable from an enclosing outer function, and that outer function returns the inner function object:
+
+```python
+def make_multiplier(factor: float):
+    """Outer enclosing function."""
+    def multiply(number: float) -> float:
+        """Inner function: 'factor' is a free variable captured from outer scope."""
+        return number * factor
+    return multiply
+
+double = make_multiplier(2.0)
+triple = make_multiplier(3.0)
+
+print(double(10))  # -> 20.0
+print(triple(10))  # -> 30.0
+
+# Introspecting the closure's captured free variable:
+print(double.__closure__[0].cell_contents)  # -> 2.0
+```
+
+Even though `make_multiplier` returned long ago and its local frame was popped off the stack, `double` still retains access to `factor=2.0` via its `__closure__` tuple.
+
+## 2. Anatomy of a Decorator
+
+A **decorator** is simply a callable that takes a function as an argument and returns a new replacement function.
+
+The `@decorator` syntax is pure syntactic sugar:
+```python
+@my_decorator
+def greet(): pass
+
+# Is 100% equivalent to:
+# def greet(): pass
+# greet = my_decorator(greet)
+```
+
+### The Canonical Decorator Pattern with `functools.wraps`
+
+When wrapping a function, always use `@functools.wraps(fn)`. Without it, the wrapped function loses its identity—its `__name__` becomes `"wrapper"` and its docstrings disappear:
+
+```python
+import functools
+import time
+
+def timing_decorator(fn):
+    """Decorator that measures and logs execution duration."""
+    @functools.wraps(fn)
+    def wrapper(*args, **kwargs):
+        start_time = time.perf_counter()
+        result = fn(*args, **kwargs)
+        duration = time.perf_counter() - start_time
+        print(f"[{fn.__name__}] executed in {duration * 1000:.3f} ms")
+        return result
+    return wrapper
+
+@timing_decorator
+def compute_heavy_task(n: int) -> int:
+    """Calculates sum of squares."""
+    return sum(i * i for i in range(n))
+
+print("Result:", compute_heavy_task(100_000))
+print("Name preserved:", compute_heavy_task.__name__)  # -> 'compute_heavy_task'
+print("Doc preserved:", compute_heavy_task.__doc__)    # -> 'Calculates sum of squares.'
+```
+
+## 3. Parameterized Decorators (Decorator Factories)
+
+What if you want your decorator to accept arguments (e.g. `@retry(max_attempts=3, delay=1.0)`)?
+
+You need a **decorator factory**: a function that takes configuration parameters and returns the actual decorator:
+
+```python
+import functools
+import time
+
+def retry(max_attempts: int = 3, delay: float = 0.1):
+    """Decorator factory accepting configuration."""
+    def decorator(fn):
+        @functools.wraps(fn)
+        def wrapper(*args, **kwargs):
+            last_err = None
+            for attempt in range(1, max_attempts + 1):
+                try:
+                    return fn(*args, **kwargs)
+                except Exception as err:
+                    last_err = err
+                    print(f"Attempt {attempt}/{max_attempts} failed: {err}")
+                    time.sleep(delay)
+            raise RuntimeError(f"All {max_attempts} attempts failed") from last_err
+        return wrapper
+    return decorator
+
+# Usage:
+call_count = 0
+
+@retry(max_attempts=3, delay=0.01)
+def unstable_network_call():
+    global call_count
+    call_count += 1
+    if call_count < 3:
+        raise ConnectionError("Timeout contacting payment gateway")
+    return "Payment Confirmed"
+
+print("Final status:", unstable_network_call())
+```
+
+## 4. Stacking Multiple Decorators
+
+When multiple decorators are applied to a single function, they are evaluated **from bottom to top** (inside out):
+
+```python
+@decorator_a
+@decorator_b
+def target(): pass
+
+# Equivalent to: target = decorator_a(decorator_b(target))
+```
+
+## Common Mistakes & Anti-Patterns
+
+### Mistake 1: Forgetting `@functools.wraps`
+Omitting `@functools.wraps` causes docstring lookup to fail in documentation tools and breaks inspection libraries like `inspect.signature`.
+
+### Mistake 2: Mutating Enclosing Scope Without `nonlocal`
+In a closure, if you attempt to assign to a variable from the enclosing scope, Python treats it as a new local variable unless declared `nonlocal`:
+```python
+def make_counter():
+    count = 0
+    def inc():
+        nonlocal count  # Mandatory to reassign 'count'
+        count += 1
+        return count
+    return inc
+```
+
+## Practice Exercises
+
+### Exercise 1: Access Control Decorator
+Write a decorator `require_role(required_role: str)` that checks a dictionary `current_user` passed in `kwargs`. If `kwargs.get("current_user", {}).get("role") != required_role`, raise a `PermissionError("Forbidden")`.
+
+### Exercise 2: Memoization Decorator
+Implement a custom memoization decorator `simple_cache(fn)` that stores past outputs in a dictionary keyed by `args` and returns cached values on repeated calls.
+
+## Exercise Solutions
+
+```python
+import functools
+
+# Solution 1:
+def require_role(required_role: str):
+    def decorator(fn):
+        @functools.wraps(fn)
+        def wrapper(*args, **kwargs):
+            user = kwargs.get("current_user", {})
+            if user.get("role") != required_role:
+                raise PermissionError(f"User requires '{required_role}' role")
+            return fn(*args, **kwargs)
+        return wrapper
+    return decorator
+
+@require_role("admin")
+def delete_database(current_user=None):
+    return "Database deleted"
+
+try:
+    delete_database(current_user={"role": "guest"})
+except PermissionError as e:
+    print("Caught expected error:", e)
+
+# Solution 2:
+def simple_cache(fn):
+    cache = {}
+    @functools.wraps(fn)
+    def wrapper(*args):
+        if args not in cache:
+            cache[args] = fn(*args)
+        return cache[args]
+    return wrapper
+
+@simple_cache
+def expensive_pow(base: int, exp: int) -> int:
+    return base ** exp
+
+print(expensive_pow(2, 10))  # Computed: 1024
+print(expensive_pow(2, 10))  # Returned from cache: 1024
+```
+
+## Summary
+
+- Closures retain references to enclosing scope variables through `__closure__` cell objects.
+- Use `nonlocal` to reassign enclosing variables within closures.
+- Decorators wrap callable objects using the `@` syntax.
+- Always decorate your wrapper function with `@functools.wraps(fn)` to preserve function metadata.
+- Decorator factories return decorators configured by higher-level parameters.
+
+## Next Step
+
+Explore reliable resource lifecycle management and cleanup patterns in [Context Managers & Resource Management](/docs/python/intermediate/context-managers).
