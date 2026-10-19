@@ -46,8 +46,14 @@ LeccionesLab Python Learning Progression
                                │
                                ▼
 ┌──────────────────────────────────────────────────────────────┐
-│  Track F: Advanced Python & Runtime Behavior (Upcoming)      │
+│  Track F: Advanced Python & Runtime Internals (Available)    │
 │  Garbage Collection · Asyncio Event Loops · GIL · Profiling  │
+└──────────────────────────────┬───────────────────────────────┘
+                               │
+                               ▼
+┌──────────────────────────────────────────────────────────────┐
+│  Track G: Professional Engineering Practices (Upcoming)      │
+│  Testing with pytest · Ruff Toolchains · Design Patterns     │
 └──────────────────────────────────────────────────────────────┘
 ```
 
@@ -132,6 +138,22 @@ Robust object architecture, Python's Data Model, cooperative dispatch, and inter
 
 ---
 
+## Track F: Advanced Python & Runtime Internals
+
+CPython virtual machine mechanics, memory architecture, profiling, and concurrency.
+
+| Module | Level | Key Concepts | Status |
+|---|---|---|---|
+| **[Object Lifecycle & Memory Management](/docs/python/advanced/object-lifecycle-and-memory-management)** | Advanced | Reference counting, cyclic GC (`gc`), `weakref`, `tracemalloc`, copies | **Available** |
+| **[Performance & Profiling](/docs/python/advanced/performance-and-profiling)** | Advanced | Big-O analysis, `timeit`, `perf_counter`, `cProfile`, `pstats`, `lru_cache`, `dis` | **Available** |
+| **[Multithreading & Shared State](/docs/python/advanced/multithreading-and-shared-state)** | Advanced | `ThreadPoolExecutor`, Locks, thread-safe Queues, deadlock avoidance, GIL | **Available** |
+| **[Multiprocessing & Parallel Execution](/docs/python/advanced/multiprocessing-and-parallel-execution)** | Advanced | `ProcessPoolExecutor`, pickle IPC, start methods, `__main__` guard, chunking | **Available** |
+| **[Asynchronous Python with asyncio](/docs/python/advanced/asynchronous-python-with-asyncio)** | Advanced | Coroutines, event loop, `TaskGroup`, timeouts, cancellation, async iteration | **Available** |
+| **[Advanced Runtime Behavior & VM Internals](/docs/python/advanced/advanced-runtime-behavior)** | Advanced | Bytecode, stack frames, `sys.meta_path`, free-threaded PEP 703, C extensions | **Available** |
+| **[Concurrency Patterns & Reliability](/docs/python/advanced/concurrency-patterns-and-reliability)** | Advanced | Bounded queues, backpressure, jittered backoff retries, graceful shutdown | **Available** |
+
+---
+
 ## Collection Complexity Cheat Sheet
 
 | Container | Operation | Average Complexity | Worst Case | Notes |
@@ -149,12 +171,6 @@ Robust object architecture, Python's Data Model, cooperative dispatch, and inter
 ## Upcoming Curriculum Tracks
 
 The following advanced tracks are scheduled in subsequent content releases:
-
-### Track F: Advanced Python & Runtime Internals (Upcoming)
-- CPython memory model, reference counting, and cyclic garbage collection (`gc` module).
-- Concurrency models: multithreading (GIL constraints), multiprocessing, and `concurrent.futures`.
-- Asynchronous programming with `asyncio`, coroutines, tasks, and asynchronous context managers.
-- C extensions, ctypes, and performance profiling.
 
 ### Track G: Professional Engineering Practices (Upcoming)
 - Testing with `pytest`, fixtures, parameterization, mocking, and coverage analysis.

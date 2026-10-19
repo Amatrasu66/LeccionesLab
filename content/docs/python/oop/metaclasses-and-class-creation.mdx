@@ -1,0 +1,60 @@
+---
+title: Metaclasses & Class Creation
+description: An advanced reference lesson into Python's meta-programming architecture: classes as runtime objects, the type metaclass, custom metaclasses, __init_subclass__, and modern class decorators.
+---
+
+> *"Metaclasses are deeper magic than 99% of users should ever worry about. If you wonder whether you need them, you don't."*  
+> — **Tim Peters**
+
+In Python, classes are first-class runtime objects constructed by the default metaclass **`type`**. Modern Python (3.6+) offers simpler, superior mechanisms—specifically **`__init_subclass__`** and **class decorators**—for metaprogramming needs.
+
+## Learning Objectives
+
+By completing this lesson, you will be able to:
+- Construct classes dynamically using `type(name, bases, dict)`.
+- Intercept class definition with the `metaclass=` parameter.
+- Replace complex metaclass logic with modern `__init_subclass__` hooks (PEP 487).
+- Understand class decorators as lightweight metaprogramming tools.
+
+## 1. Dynamic Class Construction with `type()`
+
+```python
+def speak(self) -> str:
+    return "Beep boop"
+
+Robot = type(
+    "Robot",
+    (object,),
+    {"category": "Automaton", "speak": speak}
+)
+
+bot = Robot()
+print(bot.speak())  # Beep boop
+```
+
+## 2. Modern Alternative: `__init_subclass__` (PEP 487)
+
+```python
+class PluginBase:
+    registry: dict[str, type["PluginBase"]] = {}
+
+    def __init_subclass__(cls, plugin_name: str | None = None, **kwargs):
+        super().__init_subclass__(**kwargs)
+        name = plugin_name or cls.__name__.lower()
+        cls.registry[name] = cls
+
+class JSONPlugin(PluginBase, plugin_name="json"):
+    pass
+
+print(PluginBase.registry)  # {'json': <class '__main__.JSONPlugin'>}
+```
+
+## Summary
+
+- Classes are runtime objects constructed by the metaclass `type`.
+- `__init_subclass__` (PEP 487) is the modern, idiomatic approach for subclass registration and validation.
+- Reserve custom metaclasses strictly for complex framework internals.
+
+## Next Step
+
+Advance to memory internals, profilers, and multi-threaded architectures in [Object Lifecycle & Memory Management](/docs/python/advanced/object-lifecycle-and-memory-management).

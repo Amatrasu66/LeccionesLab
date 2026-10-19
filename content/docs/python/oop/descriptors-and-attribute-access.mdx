@@ -1,0 +1,64 @@
+---
+title: Descriptors & Attribute Access
+description: Master Python's low-level attribute mechanics: the descriptor protocol (__get__, __set__, __delete__), data vs. non-data descriptors, lookup precedence, dynamic attribute interception, and __slots__.
+---
+
+Descriptors are the foundational machinery powering Python's object-oriented features: methods, `@property`, `@classmethod`, `@staticmethod`, and ORM models.
+
+## Learning Objectives
+
+By completing this lesson, you will be able to:
+- Implement the Descriptor Protocol using `__get__`, `__set__`, and `__set_name__`.
+- Distinguish between data descriptors and non-data descriptors and their lookup precedence.
+- Trace the step-by-step resolution order of attribute access (`obj.attr`).
+- Intercept attribute access safely with `__getattr__` and `__getattribute__`.
+- Optimize memory footprint and restrict dynamic attribute binding with `__slots__`.
+
+## 1. The Descriptor Protocol
+
+```python
+class PositiveNumber:
+    def __set_name__(self, owner: type, name: str) -> None:
+        self.storage_name = f"_{name}"
+
+    def __get__(self, instance: object, owner: type | None = None) -> object:
+        if instance is None:
+            return self
+        return getattr(instance, self.storage_name, None)
+
+    def __set__(self, instance: object, value: object) -> None:
+        if not isinstance(value, (int, float)) or value <= 0:
+            raise ValueError(f"Value must be a positive number, got {value}")
+        setattr(instance, self.storage_name, value)
+
+class Product:
+    price = PositiveNumber()
+    weight = PositiveNumber()
+
+    def __init__(self, price: float, weight: float):
+        self.price = price
+        self.weight = weight
+```
+
+## 2. Memory Optimization with `__slots__`
+
+```python
+class PointWithSlots:
+    __slots__ = ("x", "y")
+
+    def __init__(self, x: float, y: float):
+        self.x = x
+        self.y = y
+```
+
+Defining `__slots__` suppresses the creation of `__dict__`, reducing instance memory by over 60%.
+
+## Summary
+
+- Descriptors customize attribute access via `__get__`, `__set__`, and `__delete__`.
+- Data descriptors (`__set__`) take precedence over instance `__dict__`.
+- `__slots__` eliminates `__dict__` overhead for high-volume instances.
+
+## Next Step
+
+Explore Python's deepest meta-programming layer in [Metaclasses & Class Creation](/docs/python/oop/metaclasses-and-class-creation).

@@ -22,6 +22,8 @@ export default async function Page(props: {
   let kicker = 'DOCUMENTATION';
   if (slugPath.includes('reference')) {
     kicker = 'TECHNICAL REFERENCE';
+  } else if (slugPath.includes('advanced')) {
+    kicker = 'ADVANCED & RUNTIME INTERNALS';
   } else if (slugPath.includes('oop')) {
     kicker = 'OBJECT-ORIENTED PROGRAMMING';
   } else if (slugPath.includes('intermediate')) {

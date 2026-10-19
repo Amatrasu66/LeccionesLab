@@ -1,0 +1,132 @@
+---
+title: Methods & Object Design
+description: Master instance methods, class methods with @classmethod, static methods with @staticmethod, managed attributes with @property, object invariants, and cohesive class design.
+---
+
+Well-designed object-oriented code is not measured by the number of classes it creates, but by how cleanly those classes protect their internal invariants, encapsulate complexity, and separate responsibilities.
+
+Python offers a versatile set of tools for method design: instance methods bound to an object, class methods bound to a type, static methods without binding, and managed attributes via properties.
+
+## Learning Objectives
+
+By completing this lesson, you will be able to:
+- Distinguish between instance methods, `@classmethod`, and `@staticmethod` and select the appropriate tool.
+- Use `@classmethod` to implement elegant alternative constructors (factories from JSON, strings, dictionaries).
+- Create managed attributes using `@property` and setter decorators to enforce validation invariants.
+- Apply Python's privacy conventions (`_single_leading_underscore` vs `__name_mangling`).
+- Maintain object invariants defensively without cluttering the consumer API.
+- Favor composition over inheritance to produce flexible, testable architectures.
+
+## Prerequisites
+
+- [Classes, Objects & Attributes](/docs/python/oop/classes-objects-and-attributes)
+- [Closures, Scopes & Decorators](/docs/python/intermediate/decorators-and-closures)
+- [Functions, Signatures & Scopes](/docs/python/basics/functions)
+
+## 1. The Method Trinity: Instance, Class, and Static Methods
+
+```python
+class TemperatureSensor:
+    unit: str = "Celsius"
+
+    def __init__(self, location: str, reading: float):
+        self.location = location
+        self.reading = reading
+
+    # 1. Instance Method: Receives the instance as 'self'
+    def format_reading(self) -> str:
+        return f"{self.location}: {self.reading:.1f}° {self.unit}"
+
+    # 2. Class Method: Receives the class type as 'cls'
+    @classmethod
+    def change_default_unit(cls, new_unit: str) -> None:
+        cls.unit = new_unit
+
+    # 3. Static Method: Plain function scoped within the class namespace
+    @staticmethod
+    def is_valid_reading(value: float) -> bool:
+        return -273.15 <= value <= 1000.0
+```
+
+## 2. `@classmethod` as Alternative Constructors
+
+```python
+from datetime import date
+import json
+
+class UserProfile:
+    def __init__(self, username: str, email: str, birth_year: int):
+        self.username = username
+        self.email = email
+        self.birth_year = birth_year
+
+    @classmethod
+    def from_dict(cls, data: dict[str, str | int]) -> "UserProfile":
+        return cls(
+            username=str(data["username"]),
+            email=str(data["email"]),
+            birth_year=int(data["birth_year"]),
+        )
+
+    @classmethod
+    def from_json(cls, json_str: str) -> "UserProfile":
+        data = json.loads(json_str)
+        return cls.from_dict(data)
+```
+
+## 3. Properties and Controlled Access: `@property`
+
+```python
+class BankAccount:
+    def __init__(self, account_holder: str, initial_balance: float = 0.0):
+        self.account_holder = account_holder
+        self.balance = initial_balance
+
+    @property
+    def balance(self) -> float:
+        return self._balance
+
+    @balance.setter
+    def balance(self, value: float) -> None:
+        if not isinstance(value, (int, float)):
+            raise TypeError("Balance must be a numeric value")
+        if value < 0:
+            raise ValueError(f"Account balance cannot be negative: {value}")
+        self._balance = float(value)
+```
+
+## 4. Encapsulation Conventions
+
+1. **Public (`name`)**: Part of the official public API.
+2. **Internal (`_name`)**: Conventional warning that this is private implementation detail.
+3. **Name Mangling (`__name`)**: Renamed to `_ClassName__name` to prevent collisions in inheritance.
+
+## 5. Composition Over Inheritance
+
+> **Favor object composition over class inheritance.**
+
+```python
+from typing import Protocol
+
+class PaymentProcessor(Protocol):
+    def process_payment(self, amount: float) -> bool: ...
+
+class StripeGateway:
+    def process_payment(self, amount: float) -> bool:
+        return True
+
+class CheckoutService:
+    def __init__(self, processor: PaymentProcessor):
+        self.processor = processor
+```
+
+## Summary
+
+- Instance methods receive `self`; class methods receive `cls`; static methods receive neither.
+- Use `@classmethod` for alternative constructors.
+- Use `@property` for managed attributes and validation invariants.
+- Favor composition over inheritance.
+
+## Next Step
+
+Explore class hierarchies, Method Resolution Order, and cooperative method calls in [Inheritance & Polymorphism](/docs/python/oop/inheritance-and-polymorphism).

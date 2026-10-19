@@ -1,0 +1,13 @@
+{
+  "title": "Object-Oriented Programming",
+  "pages": [
+    "classes-objects-and-attributes",
+    "methods-and-object-design",
+    "inheritance-and-polymorphism",
+    "dunder-methods-and-data-model",
+    "dataclasses-enums-and-structured-objects",
+    "abstraction-and-interfaces",
+    "descriptors-and-attribute-access",
+    "metaclasses-and-class-creation"
+  ]
+}

@@ -1,0 +1,348 @@
+---
+title: Concurrency Patterns & Reliability
+description: Master resilient concurrency architectures, bounded queues, backpressure, exponential backoff retries, graceful shutdown, and concurrency paradigm selection.
+---
+
+Writing concurrent code that works on a local developer laptop under ideal conditions is relatively straightforward. Writing concurrent systems that remain **reliable**, **memory-stable**, and **responsive** in production—under sudden traffic spikes, flaky network dependencies, hung downstream services, and process termination signals—requires disciplined engineering patterns.
+
+This capstone lesson unifies threads, multiprocessing, and `asyncio` into a cohesive architectural decision framework and implements the core reliability patterns required in production services.
+
+## Learning Objectives
+
+By completing this lesson, you will be able to:
+- Compare synchronous, multi-threaded, multiprocessing, and asynchronous solutions across memory, latency, and throughput dimensions.
+- Choose the correct concurrency paradigm for any engineering requirement using a structured decision matrix.
+- Implement **bounded queues and backpressure** to prevent out-of-memory (OOM) crashes under traffic bursts.
+- Coordinate graceful shutdown sequences handling POSIX `SIGTERM` / `SIGINT` signals cleanly.
+- Build resilient retry mechanisms with **jittered exponential backoff** and strict circuit timeouts.
+- Prevent resource leaks, dangling workers, and uncollected background tasks.
+
+## Prerequisites
+
+- [Multithreading & Shared State](/docs/python/advanced/multithreading-and-shared-state)
+- [Multiprocessing & Parallel Execution](/docs/python/advanced/multiprocessing-and-parallel-execution)
+- [Asynchronous Python with asyncio](/docs/python/advanced/asynchronous-python-with-asyncio)
+- [Exception Hierarchies & Error Handling](/docs/python/intermediate/exception-handling)
+
+## 1. Concurrency Paradigm Decision Matrix
+
+Choosing the wrong concurrency model creates immense technical debt. Use this decision matrix:
+
+| Metric | Synchronous (Sequential) | Threading (`ThreadPoolExecutor`) | Multiprocessing (`ProcessPoolExecutor`) | Asynchronous (`asyncio`) |
+|---|---|---|---|---|
+| **Best Workload** | Simple scripts, linear CLI tasks | Blocking I/O with legacy libraries | Heavy CPU calculations, data transforms | 1,000+ concurrent I/O network connections |
+| **Concurrency Mechanism** | None (sequential) | Preemptive OS threads | Independent OS processes | Cooperative user-space event loop |
+| **Memory Overhead** | Minimal (~few MB) | Moderate (~8MB stack per OS thread) | High (full Python interpreter per worker) | **Ultra-low** (~few KB per coroutine) |
+| **Max Concurrent Tasks** | 1 | ~50–500 | ~1–64 (limited by CPU cores) | **10,000–100,000+** |
+| **Shared State Complexity** | Zero | High (requires Locks, Semaphores) | High (requires IPC / Pipes / SharedMem) | Low (single-threaded cooperative) |
+| **GIL Impact** | Bound to 1 core | Contends for 1 GIL | **Bypasses GIL** (multi-core) | Bound to 1 core |
+
+### Architectural Flowchart
+- **Is the workload CPU-bound (cryptography, image processing, machine learning)?**  
+  $\to$ **Use `multiprocessing` / `ProcessPoolExecutor`**.
+- **Is the workload I/O-bound with high connection counts (websockets, HTTP gateway)?**  
+  $\to$ **Use `asyncio`**.
+- **Is the workload I/O-bound but depends on blocking third-party SDKs without async support?**  
+  $\to$ **Use `ThreadPoolExecutor`**.
+- **Is the workload a simple script or cron job with low volume?**  
+  $\to$ **Keep it synchronous and simple**.
+
+## 2. Bounded Queues and Backpressure
+
+The single most common cause of production crashes in producer-consumer pipelines is **unbounded queue growth**.
+
+If a producer ingests 5,000 requests per second while a consumer database writer can only process 1,000 per second, an unbounded queue will accumulate millions of items in memory until the operating system terminates the process with an Out-Of-Memory (OOM) killer event.
+
+### Implementing Backpressure
+**Backpressure** occurs when a consumer signals the producer to slow down or wait:
+
+```python
+import asyncio
+
+async def bounded_producer(queue: asyncio.Queue[int], total_items: int):
+    for i in range(total_items):
+        # queue.put() pauses if queue has reached maxsize!
+        # The producer is naturally slowed down to match consumer capacity.
+        await queue.put(i)
+        print(f"[Producer] Enqueued item {i} (Queue size: {queue.qsize()})")
+
+async def slow_consumer(queue: asyncio.Queue[int]):
+    while True:
+        item = await queue.get()
+        print(f"  [Consumer] Processing item {item}...")
+        await asyncio.sleep(0.1)  # Simulates slower write latency
+        queue.task_done()
+
+async def main():
+    # Strict maximum capacity of 3 items:
+    bounded_queue = asyncio.Queue(maxsize=3)
+    
+    consumer_task = asyncio.create_task(slow_consumer(bounded_queue))
+    await bounded_producer(bounded_queue, total_items=6)
+    
+    # Wait for queue to be fully drained:
+    await bounded_queue.join()
+    consumer_task.cancel()
+
+asyncio.run(main())
+```
+
+Notice that the producer pauses automatically whenever the queue reaches 3 items, perfectly stabilizing memory consumption regardless of input volume!
+
+## 3. Resilient Retries: Jittered Exponential Backoff
+
+When communicating with external APIs or microservices, network blips and temporary server overloads happen continuously. Retrying immediately in a tight loop creates a "thundering herd" problem that guarantees the remote service stays down.
+
+The industry-standard solution is **exponential backoff with random jitter**:
+
+$$\text{delay} = \min(\text{max\_delay}, \text{base\_delay} \times 2^{\text{attempt}}) \pm \text{random\_jitter}$$
+
+```python
+import asyncio
+import random
+import time
+
+async def unreliable_remote_call(attempt: int) -> str:
+    """Fails twice before succeeding on attempt 3."""
+    if attempt < 3:
+        raise ConnectionResetError("Remote server unavailable")
+    return "SUCCESS: 200 OK"
+
+async def call_with_retry(
+    max_retries: int = 4,
+    base_delay: float = 0.2,
+    max_delay: float = 2.0,
+) -> str:
+    for attempt in range(1, max_retries + 1):
+        try:
+            print(f"Executing request (Attempt {attempt}/{max_retries})...")
+            return await unreliable_remote_call(attempt)
+        except ConnectionResetError as err:
+            if attempt == max_retries:
+                raise RuntimeError(f"All {max_retries} retries exhausted.") from err
+            
+            # Calculate exponential backoff with full jitter:
+            calculated_delay = min(max_delay, base_delay * (2 ** (attempt - 1)))
+            jittered_delay = random.uniform(0.5 * calculated_delay, calculated_delay)
+            
+            print(f"  Failed: {err}. Backing off for {jittered_delay:.2f} s...")
+            await asyncio.sleep(jittered_delay)
+
+asyncio.run(call_with_retry())
+```
+
+Expected output:
+```text
+Executing request (Attempt 1/4)...
+  Failed: Remote server unavailable. Backing off for 0.15 s...
+Executing request (Attempt 2/4)...
+  Failed: Remote server unavailable. Backing off for 0.32 s...
+Executing request (Attempt 3/4)...
+SUCCESS: 200 OK
+```
+
+## 4. Graceful Shutdown Sequences
+
+When orchestrators (like Kubernetes, Docker, or systemd) stop a service, they send a POSIX `SIGTERM` signal. A well-behaved service must:
+1. Stop accepting new incoming requests.
+2. Allow in-flight tasks to complete within a grace period.
+3. Flush buffers, commit transactions, and close database connection pools.
+4. Exit cleanly with return code `0`.
+
+```python
+import asyncio
+import signal
+import sys
+
+class GracefulServer:
+    def __init__(self):
+        self.is_running = True
+        self.active_tasks = set()
+
+    async def start(self):
+        print("Server running. Press Ctrl+C or send SIGTERM to shut down gracefully.")
+        # In a real service: loop = asyncio.get_running_loop()
+        # loop.add_signal_handler(signal.SIGINT, self.shutdown)
+        # loop.add_signal_handler(signal.SIGTERM, self.shutdown)
+        
+        while self.is_running:
+            await asyncio.sleep(0.5)
+
+    def shutdown(self):
+        print("\nShutdown signal received! Draining in-flight requests...")
+        self.is_running = False
+```
+
+## 5. Concurrency Anti-Patterns and How to Avoid Them
+
+### 1. The Fire-and-Forget Task Leak
+In `asyncio`, creating a task without retaining a reference (`asyncio.create_task(some_coroutine())`) can lead to the task being garbage-collected while still running, silently disappearing before completing!
+```python
+# AVOID: Python's garbage collector can collect running_task prematurely!
+asyncio.create_task(background_work())
+
+# PREFER: Store task reference in a set until completed
+background_tasks = set()
+task = asyncio.create_task(background_work())
+background_tasks.add(task)
+task.add_done_callback(background_tasks.discard)
+```
+
+### 2. Lock Inversion in Multi-Threaded Services
+Never acquire locks across multiple components without a strict, top-down acquisition hierarchy. If Service A acquires `UserLock` then `OrderLock`, while Service B acquires `OrderLock` then `UserLock`, concurrent requests will eventually trigger a deadlock.
+
+## Practical Example: Resilient Multi-Worker Distributed Job Pipeline
+
+Here is a complete asynchronous pipeline incorporating bounded queues, rate limiting, and exception isolation:
+
+```python
+import asyncio
+from dataclasses import dataclass
+import random
+
+@dataclass(frozen=True)
+class BatchJob:
+    job_id: str
+    payload: dict
+
+@dataclass(frozen=True)
+class JobResult:
+    job_id: str
+    status: str
+    processed_by: str
+
+class PipelineWorker:
+    def __init__(self, worker_name: str, in_queue: asyncio.Queue, out_queue: asyncio.Queue):
+        self.name = worker_name
+        self.in_queue = in_queue
+        self.out_queue = out_queue
+
+    async def run(self):
+        while True:
+            job: BatchJob | None = await self.in_queue.get()
+            if job is None:
+                # Poison pill received: exit loop cleanly
+                self.in_queue.task_done()
+                break
+
+            try:
+                # Process job with simulated I/O
+                await asyncio.sleep(random.uniform(0.05, 0.15))
+                result = JobResult(job.job_id, "SUCCESS", self.name)
+                await self.out_queue.put(result)
+            except Exception as e:
+                result = JobResult(job.job_id, f"ERROR: {e}", self.name)
+                await self.out_queue.put(result)
+            finally:
+                self.in_queue.task_done()
+
+async def run_pipeline():
+    inbound_q = asyncio.Queue(maxsize=5)  # Backpressure guard
+    results_q = asyncio.Queue()
+
+    # Launch 3 worker coroutines
+    workers = [
+        asyncio.create_task(PipelineWorker(f"Worker-{i}", inbound_q, results_q).run())
+        for i in range(3)
+    ]
+
+    # Enqueue 10 jobs
+    for i in range(10):
+        await inbound_q.put(BatchJob(f"JOB-{i:03d}", {"val": i}))
+
+    # Send poison pills to shut down workers
+    for _ in range(3):
+        await inbound_q.put(None)
+
+    # Wait for work queue to empty and workers to exit
+    await inbound_q.join()
+    await asyncio.gather(*workers)
+
+    # Collect results
+    completed_jobs = []
+    while not results_q.empty():
+        completed_jobs.append(await results_q.get())
+
+    print(f"Successfully processed {len(completed_jobs)} jobs across 3 workers.")
+    return completed_jobs
+
+if __name__ == "__main__":
+    asyncio.run(run_pipeline())
+```
+
+## Practice Exercises
+
+### Exercise 1: Concurrency Selection Case Study
+For each of the following scenarios, identify the most appropriate concurrency model (`sync`, `threads`, `multiprocessing`, or `asyncio`) and justify your choice:
+1. Resizing 10,000 JPEG images stored on local disk.
+2. Web scraper checking HTTP response codes for 5,000 URLs concurrently.
+3. Nightly batch ETL script reading one local SQLite database and generating one CSV.
+4. Calling an old C-library wrapper that makes synchronous, blocking network calls.
+
+### Exercise 2: Resilient Retrier with Exponential Backoff
+Implement an async decorator `@resilient_retry(max_retries=3, base_delay=0.1)` that catches `TimeoutError` and retries the decorated async function with jittered exponential backoff.
+
+## Exercise Solutions & Reasoning
+
+```python
+# Solution 1
+# 1. Resizing 10,000 JPEGs: Multiprocessing (CPU-bound image convolution bypasses GIL).
+# 2. 5,000 URL HTTP health checker: asyncio (Single-threaded I/O multiplexing easily handles 5,000 connections with minimal memory).
+# 3. Nightly batch SQLite to CSV: Synchronous (No concurrency needed; sequential reads/writes prevent lock contention).
+# 4. Synchronous blocking C-library network wrapper: ThreadPoolExecutor (Legacy blocking I/O offloaded to worker threads).
+
+# Solution 2
+import asyncio
+import functools
+import random
+
+def resilient_retry(max_retries: int = 3, base_delay: float = 0.1):
+    def decorator(fn):
+        @functools.wraps(fn)
+        async def wrapper(*args, **kwargs):
+            for attempt in range(1, max_retries + 1):
+                try:
+                    return await fn(*args, **kwargs)
+                except TimeoutError as err:
+                    if attempt == max_retries:
+                        raise
+                    delay = base_delay * (2 ** (attempt - 1)) + random.uniform(0, 0.05)
+                    await asyncio.sleep(delay)
+        return wrapper
+    return decorator
+
+# Verification:
+call_counter = 0
+@resilient_retry(max_retries=3, base_delay=0.05)
+async def flaky_service():
+    global call_counter
+    call_counter += 1
+    if call_counter < 3:
+        raise TimeoutError("Timed out")
+    return "OK"
+
+async def test_retry():
+    res = await flaky_service()
+    assert res == "OK"
+    assert call_counter == 3
+
+asyncio.run(test_retry())
+```
+
+## Summary
+
+- Select concurrency models based on whether workloads are CPU-bound (multiprocessing) or I/O-bound (asyncio/threads).
+- Always use bounded queues to apply backpressure and prevent unbounded memory growth.
+- Protect external service integrations with exponential backoff and randomized jitter.
+- Avoid fire-and-forget background tasks by retaining references until completion.
+- Structure applications for graceful shutdowns, allowing in-flight work to drain cleanly.
+
+## Official Documentation References
+
+- [`asyncio.Queue` — Synchronized Queues](https://docs.python.org/3/library/asyncio-queue.html)
+- [`concurrent.futures` — High-Level Concurrency](https://docs.python.org/3/library/concurrent.futures.html)
+- [Python Signal Handling](https://docs.python.org/3/library/signal.html)
+
+## Next Step
+
+Explore Python standard built-in functions technical reference in [Built-in Functions Reference](/docs/python/reference/built-in-functions).

@@ -1,0 +1,305 @@
+---
+title: Multiprocessing & Parallel Execution
+description: True parallel CPU execution, ProcessPoolExecutor, pickle serialization, start methods (spawn vs fork), entry point protection, and IPC.
+---
+
+When your application needs to crunch numbers, render graphics, train machine learning models, or compress large datasets, Python threads cannot leverage multiple CPU cores due to CPython's Global Interpreter Lock (GIL).
+
+To achieve **true parallel CPU execution**, Python provides the **`multiprocessing`** module. Instead of sharing a single interpreter and memory space, multiprocessing spawns independent operating system processes—each with its own private Python interpreter, memory space, and GIL.
+
+## Learning Objectives
+
+By completing this lesson, you will be able to:
+- Contrast the memory models and resource costs of processes vs. threads.
+- Parallelize CPU-bound workloads using `concurrent.futures.ProcessPoolExecutor`.
+- Protect the application entry point using the mandatory `if __name__ == '__main__':` guard.
+- Explain cross-platform process start methods (`spawn`, `fork`, `forkserver`) and their safety trade-offs.
+- Understand IPC (Inter-Process Communication) and the serialization constraints of `pickle`.
+- Tune task batch sizing (`chunksize`) to minimize IPC serialization overhead.
+- Diagnose common multiprocessing pitfalls: pickling closures, zombie processes, and memory amplification.
+
+## Prerequisites
+
+- [Multithreading & Shared State](/docs/python/advanced/multithreading-and-shared-state)
+- [Executable Scripts & Entry Points](/docs/python/modules/scripts-and-entrypoints)
+- [Exception Hierarchies & Error Handling](/docs/python/intermediate/exception-handling)
+
+## 1. Processes vs. Threads: The Architectural Divide
+
+Understanding the physical difference between threads and processes is essential for making informed architectural decisions:
+
+| Feature | Threads (`threading`) | Processes (`multiprocessing`) |
+|---|---|---|
+| **Memory Space** | Shared within single process | Completely isolated address space per process |
+| **GIL Status** | All threads contend for a single GIL | Each process has its own independent GIL |
+| **Multi-Core Parallelism** | No (for CPU-bound Python bytecode) | **Yes** (true hardware core parallelism) |
+| **Creation Cost** | Very light (~few microseconds) | Heavier (~several milliseconds) |
+| **IPC Mechanism** | Direct memory access (requires Locks) | Inter-Process Communication via IPC pipes / sockets |
+| **Crash Impact** | A fatal memory error crashes entire app | Process crashes are isolated from the main process |
+| **Ideal For** | High-concurrency I/O (network, disks) | Intensive CPU-bound computations |
+
+```text
+Multithreading Architecture:
+┌────────────────────────────────────────────────────────┐
+│ Process (Shared Memory Space & 1 GIL)                  │
+│   ├── Thread 1 (Python Code) ──┐                       │
+│   ├── Thread 2 (Waiting)     ──┼── Contend for 1 GIL  │
+│   └── Thread 3 (Waiting)     ──┘                       │
+└────────────────────────────────────────────────────────┘
+
+Multiprocessing Architecture:
+┌────────────────────────┐  IPC Pipe  ┌────────────────────────┐
+│ Worker 1 (CPU Core 1)  │ <════════> │ Worker 2 (CPU Core 2)  │
+│ Private Memory & GIL 1 │            │ Private Memory & GIL 2 │
+└────────────────────────┘            └────────────────────────┘
+```
+
+## 2. The Golden Rule: Entry Point Protection
+
+In multiprocessing, worker processes must import or bootstrap your script to load the target function. Without protecting the main entry point, a catastrophic recursive process fork bomb will crash your system:
+
+```python
+# MANDATORY IN ALL MULTIPROCESSING SCRIPTS:
+if __name__ == "__main__":
+    # Launch worker pools here!
+    pass
+```
+
+<Callout type="danger" title="Why is this mandatory?">
+On Windows and macOS (and Linux using `spawn`), new child processes launch a fresh Python interpreter and **import the main script from the top**. If your process pool creation code is at the top level outside `if __name__ == "__main__":`, every child process imports the file and immediately spawns more child processes, repeating indefinitely until the OS runs out of process IDs!
+</Callout>
+
+## 3. High-Level Parallelism with `ProcessPoolExecutor`
+
+The modern, idiomatic interface for parallel CPU execution is `concurrent.futures.ProcessPoolExecutor`:
+
+```python
+from concurrent.futures import ProcessPoolExecutor
+import time
+import math
+
+def is_prime(n: int) -> bool:
+    """CPU-bound primality verification."""
+    if n < 2:
+        return False
+    if n in (2, 3):
+        return True
+    if n % 2 == 0 or n % 3 == 0:
+        return False
+    for i in range(5, int(math.isqrt(n)) + 1, 6):
+        if n % i == 0 or n % (i + 2) == 0:
+            return False
+    return True
+
+if __name__ == "__main__":
+    candidates = [100_000_007, 100_000_019, 100_000_037, 100_000_039, 100_000_049]
+
+    t0 = time.perf_counter()
+    # By default, max_workers matches os.cpu_count()
+    with ProcessPoolExecutor() as pool:
+        results = list(pool.map(is_prime, candidates))
+    
+    elapsed = time.perf_counter() - t0
+    print(f"Verified {len(candidates)} large numbers in {elapsed * 1000:.2f} ms")
+    for n, prime in zip(candidates, results):
+        print(f"  {n}: {'PRIME' if prime else 'COMPOSITE'}")
+```
+
+Each candidate is dispatched across available physical CPU cores, bypassing the GIL completely.
+
+## 4. Cross-Platform Process Start Methods: `spawn`, `fork`, `forkserver`
+
+Python supports three different start methods (`multiprocessing.set_start_method`):
+
+1. **`spawn`** *(Default on Windows and macOS; Python 3.14 default on Linux)*:
+   - Spawns a brand-new Python process from scratch.
+   - Slowest startup, but **safest**: cleans up stale thread locks, file descriptors, and C-extension state.
+2. **`fork`** *(Historical Unix default)*:
+   - Uses the POSIX `fork()` syscall. Duplicates the process memory instantly without re-importing code.
+   - **Hazardous in multi-threaded programs**: Can duplicate locks in an acquired state, causing immediate deadlocks in child processes!
+3. **`forkserver`**:
+   - A compromise: boots a clean single-threaded server process upon startup, and forks workers from that clean server whenever needed.
+
+```python
+import multiprocessing
+
+if __name__ == "__main__":
+    # Explicitly enforce safe spawn method across all operating systems:
+    multiprocessing.set_start_method("spawn", force=True)
+```
+
+## 5. IPC and The `pickle` Serialization Contract
+
+Because processes do not share memory, all arguments sent to a worker and all return values sent back to the parent process must be **serialized into bytes via `pickle`**:
+
+```text
+Parent Process                 IPC OS Pipe                  Worker Process
+┌──────────────┐             ┌─────────────┐              ┌──────────────┐
+│ Python Obj   │ ──pickle──> │ Byte Stream │ ──unpickle─> │ Python Obj   │
+└──────────────┘             └─────────────┘              └──────────────┘
+```
+
+### What Can and Cannot Be Pickled?
+- **Can be pickled**: Built-in primitives (`int`, `str`, `dict`, `list`), top-level functions defined at module scope, classes defined at module scope, dataclasses.
+- **CANNOT be pickled**: `lambda` functions, nested/inner functions, closures, generators, open file handles, database connections, active network sockets, thread locks.
+
+```python
+# BROKEN: Lambdas and nested functions cannot be pickled!
+def broken_parallel_run():
+    with ProcessPoolExecutor() as pool:
+        # Fails with pickle.PicklingError: Can't pickle local object!
+        pool.map(lambda x: x * 2, [1, 2, 3])
+```
+
+## 6. Sizing Tasks: The `chunksize` Parameter
+
+Sending thousands of tiny, trivial tasks through an IPC pipe causes serialization overhead that dwarfs the execution time:
+
+```python
+# If tasks are tiny, IPC serialization dominates:
+with ProcessPoolExecutor() as pool:
+    # AVOID: Sends 1,000,000 separate single-item IPC messages
+    # pool.map(add_one, range(1_000_000), chunksize=1)
+
+    # PREFER: Bundles 1,000 items per IPC message, amortizing serialization cost!
+    results = list(pool.map(add_one, range(1_000_000), chunksize=1_000))
+```
+
+## Practical Example: Parallel Image / Matrix Filter
+
+Here is a parallel image filter pipeline computing Gaussian blur approximations across image tiles:
+
+```python
+from concurrent.futures import ProcessPoolExecutor
+from dataclasses import dataclass
+import time
+
+@dataclass
+class ImageTile:
+    tile_id: int
+    width: int
+    height: int
+    pixels: list[float]
+
+def apply_box_blur(tile: ImageTile) -> ImageTile:
+    """CPU-bound convolution simulating image processing."""
+    blurred = list(tile.pixels)
+    w = tile.width
+    # 3-element horizontal moving average:
+    for i in range(1, len(tile.pixels) - 1):
+        blurred[i] = (tile.pixels[i - 1] + tile.pixels[i] + tile.pixels[i + 1]) / 3.0
+    return ImageTile(tile.tile_id, tile.width, tile.height, blurred)
+
+def generate_mock_tiles(count: int, size: int) -> list[ImageTile]:
+    return [
+        ImageTile(
+            tile_id=i,
+            width=size,
+            height=size,
+            pixels=[float((x * 7 + i) % 256) for x in range(size * size)],
+        )
+        for i in range(count)
+    ]
+
+if __name__ == "__main__":
+    tiles = generate_mock_tiles(count=16, size=500)  # 16 tiles of 250,000 pixels
+
+    print(f"Processing {len(tiles)} tiles across CPU cores...")
+    t_start = time.perf_counter()
+
+    with ProcessPoolExecutor() as executor:
+        processed_tiles = list(executor.map(apply_box_blur, tiles, chunksize=2))
+
+    t_total = time.perf_counter() - t_start
+    print(f"Successfully processed {len(processed_tiles)} tiles in {t_total:.3f} s")
+```
+
+## Common Mistakes & Anti-Patterns
+
+### 1. Modifying Global Variables in Worker Processes
+```python
+results = []
+
+def worker(item):
+    results.append(item)  # Modifies WORKER'S private copy, NOT the parent's!
+
+if __name__ == "__main__":
+    with ProcessPoolExecutor() as pool:
+        pool.map(worker, [1, 2, 3])
+    print(results)  # [] (EMPTY! Workers have isolated memory!)
+```
+**Fix:** Always return values from worker functions and collect them via `pool.map()` or `future.result()`.
+
+### 2. Spawning More Processes Than Available CPU Cores
+Spawning 100 processes on a 4-core machine degrades performance due to constant OS kernel context switching and RAM thrashing. Let `ProcessPoolExecutor` default to `os.cpu_count()`.
+
+## Practice Exercises
+
+### Exercise 1: Parallel Factorial Digest
+Write a standalone Python script with `if __name__ == '__main__':` that computes the SHA-256 hash of the string representation of $N!$ (factorial of $N$) for $N \in [5000, 10000, 15000, 20000]$ in parallel using `ProcessPoolExecutor`.
+
+### Exercise 2: IPC Pipe Chunksize Analysis
+Benchmark computing `sum(range(k))` for $100,000$ values with `chunksize=1` versus `chunksize=500`. Observe and explain the wall-clock time difference caused by IPC serialization overhead.
+
+## Exercise Solutions & Reasoning
+
+```python
+# Solution 1
+import hashlib
+import math
+from concurrent.futures import ProcessPoolExecutor
+
+def compute_factorial_digest(n: int) -> tuple[int, str]:
+    fact = math.factorial(n)
+    digest = hashlib.sha256(str(fact).encode("utf-8")).hexdigest()
+    return (n, digest)
+
+if __name__ == "__main__":
+    inputs = [5000, 10000, 15000, 20000]
+    with ProcessPoolExecutor() as pool:
+        results = list(pool.map(compute_factorial_digest, inputs))
+    for n, dig in results:
+        print(f"{n}! -> {dig[:16]}...")
+    assert len(results) == 4
+
+# Solution 2
+from concurrent.futures import ProcessPoolExecutor
+import time
+
+def compute_square(x: int) -> int:
+    return x * x
+
+if __name__ == "__main__":
+    data = list(range(10_000))
+
+    t0 = time.perf_counter()
+    with ProcessPoolExecutor() as p:
+        list(p.map(compute_square, data, chunksize=1))
+    t_chunk_1 = time.perf_counter() - t0
+
+    t1 = time.perf_counter()
+    with ProcessPoolExecutor() as p:
+        list(p.map(compute_square, data, chunksize=500))
+    t_chunk_500 = time.perf_counter() - t1
+
+    # Chunksize 500 batches IPC transfers, running significantly faster:
+    print(f"chunksize=1: {t_chunk_1*1000:.1f}ms vs chunksize=500: {t_chunk_500*1000:.1f}ms")
+```
+
+## Summary
+
+- Multiprocessing achieves true multi-core parallel execution by giving each worker its own Python interpreter and GIL.
+- `if __name__ == '__main__':` is strictly required to prevent infinite recursive child process spawns.
+- Worker arguments and return values must be serializable with `pickle`.
+- The `spawn` start method is the safest cross-platform option, avoiding fork-related deadlocks.
+- Adjust `chunksize` in `pool.map()` to amortize IPC serialization overhead across large numbers of small tasks.
+
+## Official Documentation References
+
+- [`multiprocessing` — Process-based parallelism](https://docs.python.org/3/library/multiprocessing.html)
+- [`concurrent.futures.ProcessPoolExecutor`](https://docs.python.org/3/library/concurrent.futures.html#processpoolexecutor)
+- [`pickle` — Python object serialization](https://docs.python.org/3/library/pickle.html)
+
+## Next Step
+
+Explore non-blocking single-threaded cooperative multitasking for high-concurrency network servers in [Asynchronous Python with asyncio](/docs/python/advanced/asynchronous-python-with-asyncio).
