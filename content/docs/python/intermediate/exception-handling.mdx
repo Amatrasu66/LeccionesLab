@@ -91,7 +91,7 @@ Placing code in the `else:` block guarantees that it only runs if the `try:` blo
 
 ## 3. Creating Domain-Specific Custom Exceptions
 
-Well-designed software defines custom exception hierarchies for its domain (e.g. `PaymentError`, `ValidationError`):
+Well-designed software defines custom exception hierarchies for its domain (e.g. `PaymentError`, `ValidationError`). Custom exceptions leverage Python's class inheritance and cooperative `super()` mechanisms (see [Inheritance & Polymorphism](/docs/python/oop/inheritance-and-polymorphism)):
 
 ```python
 class AppError(Exception):

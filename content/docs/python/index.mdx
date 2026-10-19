@@ -40,7 +40,7 @@ LeccionesLab Python Learning Progression
                                │
                                ▼
 ┌──────────────────────────────────────────────────────────────┐
-│  Track E: Object-Oriented Programming (Upcoming)             │
+│  Track E: Object-Oriented Programming (Available)            │
 │  Classes · MRO & super() · Dunder Methods · Protocols & ABCs │
 └──────────────────────────────┬───────────────────────────────┘
                                │
@@ -115,6 +115,23 @@ Deeper Python language semantics, execution mechanics, and static typing guarant
 
 ---
 
+## Track E: Object-Oriented Programming
+
+Robust object architecture, Python's Data Model, cooperative dispatch, and interface design.
+
+| Module | Level | Key Concepts | Status |
+|---|---|---|---|
+| **[Classes, Objects & Attributes](/docs/python/oop/classes-objects-and-attributes)** | Intermediate | `__new__` vs `__init__`, `self` mechanics, namespace dicts, class vs. instance state | **Available** |
+| **[Methods & Object Design](/docs/python/oop/methods-and-object-design)** | Intermediate | `@classmethod` factories, `@staticmethod`, `@property` invariants, composition | **Available** |
+| **[Inheritance & Polymorphism](/docs/python/oop/inheritance-and-polymorphism)** | Intermediate | Dynamic dispatch, cooperative `super()`, multiple inheritance, C3 linearization | **Available** |
+| **[Dunder Methods & Data Model](/docs/python/oop/dunder-methods-and-data-model)** | Intermediate | `__repr__` vs `__str__`, equality & hash contracts, operator overloading | **Available** |
+| **[Dataclasses & Structured Objects](/docs/python/oop/dataclasses-enums-and-structured-objects)** | Intermediate | `@dataclass`, `field(default_factory=...)`, `frozen=True`, `Enum`, `NamedTuple` | **Available** |
+| **[Abstraction & Interface Design](/docs/python/oop/abstraction-and-interfaces)** | Intermediate–Advanced | Nominal `abc.ABC`, `@abstractmethod`, structural `typing.Protocol`, ISP | **Available** |
+| **[Descriptors & Attribute Access](/docs/python/oop/descriptors-and-attribute-access)** | Advanced | Descriptor protocol (`__get__`, `__set__`), lookup precedence, `__slots__` | **Available** |
+| **[Metaclasses & Class Creation](/docs/python/oop/metaclasses-and-class-creation)** | Advanced Reference | `type()` dynamic construction, `metaclass=`, `__init_subclass__` (PEP 487) | **Available** |
+
+---
+
 ## Collection Complexity Cheat Sheet
 
 | Container | Operation | Average Complexity | Worst Case | Notes |
@@ -132,12 +149,6 @@ Deeper Python language semantics, execution mechanics, and static typing guarant
 ## Upcoming Curriculum Tracks
 
 The following advanced tracks are scheduled in subsequent content releases:
-
-### Track E: Object-Oriented Programming (Upcoming)
-- Classes, instance vs. class attributes, static methods, and `@classmethod`.
-- Inheritance, composition, polymorphism, and Method Resolution Order (`super()`, MRO).
-- Dunder methods (`__repr__`, `__eq__`, `__add__`), descriptors, `@property`, and `__slots__`.
-- Abstract Base Classes (`abc.ABC`), structural subtyping (`typing.Protocol`), and `dataclasses`.
 
 ### Track F: Advanced Python & Runtime Internals (Upcoming)
 - CPython memory model, reference counting, and cyclic garbage collection (`gc` module).

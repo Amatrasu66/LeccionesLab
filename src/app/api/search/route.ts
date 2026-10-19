@@ -16,12 +16,14 @@ export async function GET(request: Request) {
         breadcrumbs.push(segments[1].charAt(0).toUpperCase() + segments[1].slice(1));
       }
       if (segments.length >= 4) {
-        breadcrumbs.push(
-          segments[2]
-            .split('-')
-            .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-            .join(' ')
-        );
+        const sectionName =
+          segments[2].toLowerCase() === 'oop'
+            ? 'OOP'
+            : segments[2]
+                .split('-')
+                .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+                .join(' ');
+        breadcrumbs.push(sectionName);
       }
       return {
         id: page.url,

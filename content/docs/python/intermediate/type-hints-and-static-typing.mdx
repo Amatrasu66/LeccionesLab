@@ -106,9 +106,11 @@ display_component(Button())  # Passes static type checking!
 display_component(Header())  # Passes static type checking!
 ```
 
+For deeper architectural patterns contrasting `Protocol` with `abc.ABC`, see [Abstraction & Interface Design](/docs/python/oop/abstraction-and-interfaces).
+
 ## 4. Strongly Typed Records with `@dataclass`
 
-The `dataclasses` module automatically generates `__init__`, `__repr__`, `__eq__`, and hashing methods based on type annotations:
+The `dataclasses` module automatically generates `__init__`, `__repr__`, `__eq__`, and hashing methods based on type annotations (explored in full depth in [Dataclasses, Enums & Structured Objects](/docs/python/oop/dataclasses-enums-and-structured-objects)):
 
 ```python
 from dataclasses import dataclass, field
@@ -220,4 +222,4 @@ print(res.to_json())
 
 ## Next Step
 
-Explore Python's built-in functions technical reference in [Built-in Functions Reference](/docs/python/reference/built-in-functions).
+Advance to Track E: Object-Oriented Programming in [Classes, Objects & Attributes](/docs/python/oop/classes-objects-and-attributes), or consult the [Built-in Functions Reference](/docs/python/reference/built-in-functions).

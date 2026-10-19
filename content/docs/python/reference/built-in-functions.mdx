@@ -21,7 +21,7 @@ def len(s: Sized) -> int: ...
 An `int` representing the total element count. Guaranteed `O(1)` time complexity for standard library collections because Python containers store their size in an internal C struct field (`ob_size`).
 
 ### Exceptions
-- `TypeError`: Raised if `s` is not a collection and does not implement the `__len__()` special method.
+- `TypeError`: Raised if `s` is not a collection and does not implement the `__len__()` special method (see [Dunder Methods & Python's Data Model](/docs/python/oop/dunder-methods-and-data-model)).
 
 ### Example
 ```python
