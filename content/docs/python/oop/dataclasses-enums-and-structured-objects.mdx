@@ -1,0 +1,67 @@
+---
+title: Dataclasses, Enums & Structured Objects
+description: Construct clean, type-annotated data records with @dataclass, frozen immutability, field factories, type-safe Enums, and systematic comparisons with NamedTuple and TypedDict.
+---
+
+Writing boilerplate `__init__`, `__repr__`, and `__eq__` methods for simple data containers is tedious. Python offers high-level constructs designed specifically for structured records: **`dataclasses`**, **`enum.Enum`**, **`typing.NamedTuple`**, and **`typing.TypedDict`**.
+
+## Learning Objectives
+
+By completing this lesson, you will be able to:
+- Generate initialization, representation, and comparisons automatically using `@dataclass`.
+- Configure mutable field defaults safely using `field(default_factory=...)`.
+- Enforce immutability and hashability with `frozen=True`.
+- Execute post-initialization validation using `__post_init__`.
+- Define type-safe enumerated constants using `Enum`, `StrEnum`, and `auto()`.
+
+## 1. Introducing `@dataclass`
+
+```python
+from dataclasses import dataclass, field
+
+@dataclass
+class Customer:
+    id: int
+    name: str
+    tags: list[str] = field(default_factory=list)
+    active: bool = True
+```
+
+## 2. Immutability with `frozen=True` and `__post_init__`
+
+```python
+@dataclass(frozen=True)
+class APIKey:
+    key_id: str
+    secret: str
+
+@dataclass
+class Invoice:
+    subtotal: float
+    tax_rate: float
+    total: float = field(init=False)
+
+    def __post_init__(self):
+        self.total = self.subtotal * (1 + self.tax_rate)
+```
+
+## 3. Type-Safe Constants with `Enum`
+
+```python
+from enum import StrEnum, auto
+
+class OrderStatus(StrEnum):
+    PENDING = auto()
+    SHIPPED = auto()
+    DELIVERED = auto()
+```
+
+## Summary
+
+- `@dataclass` synthesizes `__init__`, `__repr__`, and `__eq__` from type annotations.
+- Use `field(default_factory=...)` for mutable defaults.
+- `frozen=True` provides immutability and automatic hashability.
+
+## Next Step
+
+Establish formal architectural boundaries and interfaces in [Abstraction & Interface Design](/docs/python/oop/abstraction-and-interfaces).

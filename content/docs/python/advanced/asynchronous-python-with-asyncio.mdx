@@ -1,0 +1,342 @@
+---
+title: Asynchronous Python with asyncio
+description: Master coroutines, event loops, Tasks, cooperative scheduling, asyncio.gather, TaskGroups, timeouts, cancellation, and async iteration.
+---
+
+When building web applications, microservices, chat systems, or websocket gateways that handle tens of thousands of concurrent connections, traditional thread-per-connection architectures buckle under the weight of operating system stack allocations and kernel context switching.
+
+Python solves high-concurrency I/O with **`asyncio`**, a standard-library framework for single-threaded **cooperative multitasking**. Instead of the operating system pre-empting code, coroutines voluntarily yield execution back to a centralized **event loop** whenever waiting for I/O.
+
+## Learning Objectives
+
+By completing this lesson, you will be able to:
+- Explain cooperative scheduling and contrast coroutines with threads.
+- Define and execute coroutines using `async def`, `await`, and `asyncio.run()`.
+- Create concurrent background operations using `asyncio.create_task()` and `asyncio.TaskGroup` (Python 3.11+).
+- Manage structured concurrency, timeouts (`asyncio.timeout`), and task cancellation.
+- Implement asynchronous context managers (`async with`) and async iterators (`async for`).
+- Bound concurrency with `asyncio.Semaphore` to prevent overwhelming downstream services.
+- Diagnose event loop stalls caused by accidental blocking operations and offload them to thread pools.
+
+## Prerequisites
+
+- [Functions, Signatures & Scopes](/docs/python/basics/functions)
+- [Iterators, Generators & Lazy Evaluation](/docs/python/intermediate/iterators-and-generators)
+- [Context Managers & Resource Management](/docs/python/intermediate/context-managers)
+
+## 1. Coroutines and Cooperative Scheduling
+
+A standard Python function runs from start to finish without interruption. A **coroutine function** (declared with `async def`) can be **paused and resumed** at specific `await` points:
+
+```python
+import asyncio
+
+# Calling an async def function does NOT execute it immediately!
+# It returns a coroutine object.
+async def greet(name: str):
+    print(f"Hello, {name}!")
+    # Voluntarily pause execution, returning control to the event loop:
+    await asyncio.sleep(0.5)
+    print(f"Goodbye, {name}!")
+
+# Execution requires an event loop:
+async def main():
+    await greet("Ada")
+
+asyncio.run(main())
+```
+
+### The Event Loop Mental Model
+Think of the event loop as a single-threaded scheduler with a queue of tasks. When a task reaches an `await` on a non-blocking socket or sleep:
+1. The coroutine registers a callback with the OS (e.g. `epoll` on Linux, `kqueue` on macOS).
+2. The coroutine suspends its execution frame.
+3. The event loop immediately switches to the next ready task.
+4. When the OS signals that bytes have arrived, the event loop resumes the suspended coroutine where it left off.
+
+```text
+Event Loop Queue:
+┌──────────┐      await I/O      ┌────────────────┐      I/O Ready      ┌──────────┐
+│  Task A  │ ─────────────────>  │ Operating Sys  │ ─────────────────>  │  Task A  │
+│ Running  │ (yields to Task B)  │ epoll / kqueue │ (re-enters loop)    │ Resumed  │
+└──────────┘                     └────────────────┘                     └──────────┘
+```
+
+## 2. Running Concurrently: `create_task` vs Sequential `await`
+
+A beginner mistake is awaiting operations one by one inside a loop:
+
+```python
+# SLOW: Runs sequentially (takes 3.0 seconds total!)
+async def fetch_sequential():
+    for i in range(3):
+        await asyncio.sleep(1.0)
+```
+
+To run coroutines concurrently, wrap them into **Tasks** using `asyncio.create_task()`, or use `asyncio.gather()`:
+
+```python
+import asyncio
+import time
+
+async def fetch_api(endpoint: str, delay: float) -> str:
+    print(f"Fetching {endpoint}...")
+    await asyncio.sleep(delay)
+    return f"Data from {endpoint}"
+
+async def main():
+    t0 = time.perf_counter()
+
+    # Launch coroutines concurrently on the event loop:
+    results = await asyncio.gather(
+        fetch_api("users", 0.5),
+        fetch_api("orders", 0.8),
+        fetch_api("inventory", 0.3),
+    )
+
+    elapsed = time.perf_counter() - t0
+    print(f"Gathered {len(results)} responses in {elapsed:.2f} s")
+    print("Results:", results)
+
+asyncio.run(main())
+```
+
+Expected output:
+```text
+Fetching users...
+Fetching orders...
+Fetching inventory...
+Gathered 3 responses in 0.80 s
+Results: ['Data from users', 'Data from orders', 'Data from inventory']
+```
+
+All three requests run concurrently in a single thread, completing in the time taken by the slowest request (0.8s) rather than their sum (1.6s).
+
+## 3. Modern Structured Concurrency: `asyncio.TaskGroup`
+
+In Python 3.11+, **`asyncio.TaskGroup`** provides a cleaner, safer pattern than `asyncio.gather`. It acts as an asynchronous context manager that guarantees all spawned tasks complete or cancel cleanly before the block exits:
+
+```python
+import asyncio
+
+async def worker(task_id: int):
+    await asyncio.sleep(0.2)
+    if task_id == 2:
+        raise ValueError("Task 2 failed!")
+    print(f"Worker {task_id} succeeded")
+
+async def main():
+    try:
+        # If any task inside crashes, TaskGroup cancels all remaining sibling tasks!
+        async with asyncio.TaskGroup() as tg:
+            t1 = tg.create_task(worker(1))
+            t2 = tg.create_task(worker(2))
+            t3 = tg.create_task(worker(3))
+    except* ValueError as eg:
+        # Python 3.11+ ExceptionGroup handling:
+        print(f"Caught exception in task group: {eg.exceptions}")
+
+asyncio.run(main())
+```
+
+## 4. Timeouts and Task Cancellation
+
+In distributed systems, external services occasionally hang or respond slowly. Use `asyncio.timeout()` (Python 3.11+) to enforce strict deadlines:
+
+```python
+import asyncio
+
+async def slow_upstream_service():
+    print("Querying external mainframe...")
+    await asyncio.sleep(5.0)  # Simulates hanging service
+    return "Data payload"
+
+async def main():
+    try:
+        # Enforce a 1.0 second timeout boundary:
+        async with asyncio.timeout(1.0):
+            result = await slow_upstream_service()
+            print(result)
+    except TimeoutError:
+        print("Upstream request timed out! Aborting gracefully.")
+
+asyncio.run(main())
+```
+
+When a timeout fires, `asyncio` injects an `asyncio.CancelledError` into the suspended coroutine, unwinding its stack cleanly and executing any `finally:` blocks.
+
+## 5. Bounding Concurrency with `asyncio.Semaphore`
+
+Spawning 10,000 tasks concurrently can overwhelm target databases or exhaust local file descriptors. Use an **`asyncio.Semaphore`** to bound the maximum number of concurrent operations:
+
+```python
+import asyncio
+
+async def download_file(sem: asyncio.Semaphore, file_id: int):
+    async with sem:
+        # At most 3 tasks can enter this block simultaneously
+        print(f"Downloading file {file_id}...")
+        await asyncio.sleep(0.3)
+        print(f"Finished file {file_id}")
+
+async def main():
+    semaphore = asyncio.Semaphore(3)  # Maximum 3 concurrent downloads
+    async with asyncio.TaskGroup() as tg:
+        for i in range(8):
+            tg.create_task(download_file(semaphore, i))
+
+asyncio.run(main())
+```
+
+## 6. The Golden Rule: Never Run Blocking Code Directly in the Event Loop
+
+Because `asyncio` is single-threaded, running a blocking synchronous operation (like `time.sleep()`, standard `open()`, synchronous `requests.get()`, or a heavy CPU calculation) **freezes the entire event loop**:
+
+```python
+# DISASTROUS BUG: Freezes the entire event loop for all users!
+async def bad_handler():
+    time.sleep(5.0)  # NO! Blocks the whole thread!
+```
+
+### Offloading Blocking Code with `asyncio.to_thread`
+
+If you must invoke a synchronous third-party library or disk operation, offload it to a background thread pool using `asyncio.to_thread()` (Python 3.9+):
+
+```python
+import asyncio
+import time
+
+def blocking_legacy_io(filename: str) -> int:
+    """Synchronous, blocking function."""
+    time.sleep(1.0)
+    return len(filename)
+
+async def main():
+    print("Running event loop...")
+    # Runs in a separate worker thread without stalling the event loop:
+    result = await asyncio.to_thread(blocking_legacy_io, "large_report.csv")
+    print(f"Offloaded IO completed with result: {result}")
+
+asyncio.run(main())
+```
+
+## Practical Example: Async Rate-Limited Scraping Pipeline
+
+```python
+import asyncio
+from dataclasses import dataclass
+
+@dataclass
+class FetchResult:
+    url: str
+    status: int
+    content_length: int
+
+class AsyncScraper:
+    def __init__(self, max_concurrency: int = 4):
+        self.semaphore = asyncio.Semaphore(max_concurrency)
+
+    async def fetch_url(self, url: str) -> FetchResult:
+        async with self.semaphore:
+            # Simulate non-blocking async network request:
+            await asyncio.sleep(0.15)
+            if "invalid" in url:
+                return FetchResult(url, 404, 0)
+            return FetchResult(url, 200, len(url) * 128)
+
+    async def scrape_all(self, urls: list[str]) -> list[FetchResult]:
+        tasks = [self.fetch_url(u) for u in urls]
+        return await asyncio.gather(*tasks)
+
+async def main():
+    target_urls = [
+        "https://api.site.com/products",
+        "https://api.site.com/pricing",
+        "https://api.site.com/invalid-link",
+        "https://api.site.com/docs",
+    ]
+    scraper = AsyncScraper(max_concurrency=2)
+    results = await scraper.scrape_all(target_urls)
+    for r in results:
+        print(f"[{r.status}] {r.url} -> {r.content_length} bytes")
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
+## Common Mistakes & Anti-Patterns
+
+### 1. Forgetting to `await` a Coroutine
+Calling `my_coroutine()` without `await` does not run the function; it only creates a coroutine object. Python will emit a runtime warning: `RuntimeWarning: coroutine 'my_coroutine' was never awaited`.
+
+### 2. Using `asyncio` for CPU-Bound Work
+`asyncio` does not provide multi-core parallel computation. It is strictly for I/O multiplexing. Use `ProcessPoolExecutor` for CPU-bound tasks.
+
+## Practice Exercises
+
+### Exercise 1: Asynchronous Polling with Backoff
+Write a coroutine `poll_job_status(job_id: str, max_attempts: int = 5) -> str` that checks an imaginary job status every 0.1 seconds (doubling delay each attempt). If `attempt == 3`, return `"COMPLETED"`. Enforce an overall timeout of 2.0 seconds with `asyncio.timeout`.
+
+### Exercise 2: Async Rate-Limited Pipeline with Exceptions
+Create an async pipeline that processes a list of 5 item IDs. If item `3` raises a `KeyError`, catch it gracefully using a `try-except` block inside the worker so that the remaining 4 items still finish successfully.
+
+## Exercise Solutions & Reasoning
+
+```python
+# Solution 1
+import asyncio
+
+async def poll_job_status(job_id: str, max_attempts: int = 5) -> str:
+    delay = 0.05
+    for attempt in range(1, max_attempts + 1):
+        await asyncio.sleep(delay)
+        if attempt == 3:
+            return "COMPLETED"
+        delay *= 2
+    return "FAILED"
+
+async def test_polling():
+    async with asyncio.timeout(2.0):
+        status = await poll_job_status("job-42")
+        assert status == "COMPLETED"
+
+asyncio.run(test_polling())
+
+# Solution 2
+import asyncio
+
+async def safe_fetch(item_id: int) -> dict:
+    try:
+        await asyncio.sleep(0.05)
+        if item_id == 3:
+            raise KeyError("ID 3 missing in remote database")
+        return {"id": item_id, "status": "ok"}
+    except KeyError as e:
+        return {"id": item_id, "status": "error", "reason": str(e)}
+
+async def test_pipeline():
+    results = await asyncio.gather(*(safe_fetch(i) for i in range(5)))
+    assert len(results) == 5
+    assert results[3]["status"] == "error"
+    assert results[0]["status"] == "ok"
+
+asyncio.run(test_pipeline())
+```
+
+## Summary
+
+- `asyncio` enables high-throughput single-threaded cooperative multitasking for I/O-bound tasks.
+- Coroutines defined with `async def` pause and resume at `await` points, relinquishing control to the event loop.
+- Use `asyncio.TaskGroup` (Python 3.11+) for structured concurrency and automated cancellation management.
+- Guard against external latency with `asyncio.timeout` and bound concurrency with `asyncio.Semaphore`.
+- Never call synchronous blocking functions inside coroutines; offload them to threads using `asyncio.to_thread()`.
+
+## Official Documentation References
+
+- [`asyncio` — Asynchronous I/O](https://docs.python.org/3/library/asyncio.html)
+- [Coroutines and Tasks in asyncio](https://docs.python.org/3/library/asyncio-task.html)
+- [Python 3.11 TaskGroup](https://docs.python.org/3/library/asyncio-task.html#task-groups)
+- [`asyncio.timeout` Context Manager](https://docs.python.org/3/library/asyncio-task.html#asyncio.timeout)
+
+## Next Step
+
+Explore Python virtual machine internals, bytecode, and native C-extension architectures in [Advanced Runtime Behavior](/docs/python/advanced/advanced-runtime-behavior).

@@ -1,0 +1,211 @@
+---
+title: Iteration & Functional Utilities
+description: Master high-performance streaming data manipulation and function transformations using itertools and functools in Python.
+---
+
+Modern Python programs process high-volume data streams, transform complex pipelines, and apply functional programming idioms. Python's standard library provides two powerhouse modules for this:
+- **`itertools`**: Highly optimized, memory-efficient iterator building blocks written in C for looping, combining, slicing, and grouping sequences.
+- **`functools`**: Higher-order functions that act on or return other functions (caching, currying/partial application, function composition).
+
+Learning to compose `itertools` and `functools` leads to clean, expressive code with $O(1)$ memory footprints.
+
+## Learning Objectives
+
+By completing this lesson, you will be able to:
+- Stream and transform infinite sequences without exhausting memory using `itertools.count`, `cycle`, and `islice`.
+- Combine and partition data using `chain`, `zip_longest`, `takewhile`, and `groupby`.
+- Generate permutations, combinations, and cartesian products with combinatorial iterators.
+- Optimize CPU-bound functions using memoization with `functools.lru_cache` and `cache`.
+- Create specialized function signatures using `functools.partial`.
+- Apply reductions with `functools.reduce` and enhance class comparisons with `@total_ordering`.
+
+## Prerequisites
+
+- [Functions & Scope](/docs/python/basics/functions)
+- [Lists & Dynamic Arrays](/docs/python/collections/lists)
+
+## 1. High-Performance Iteration with `itertools`
+
+All `itertools` functions return **iterators**. They compute items lazily on demand rather than allocating memory for entire lists.
+
+### A. Infinite Iterators & Slicing
+```python
+import itertools
+
+# count(start, step): Infinite sequence 10, 12, 14...
+counter = itertools.count(start=10, step=2)
+
+# islice(iterable, stop): Take first N items from ANY iterator
+first_five = list(itertools.islice(counter, 5))
+print(first_five)  # -> [10, 12, 14, 16, 18]
+
+# cycle(iterable): Repeats sequence indefinitely
+traffic_light = itertools.cycle(["RED", "GREEN", "YELLOW"])
+print([next(traffic_light) for _ in range(5)])
+# -> ['RED', 'GREEN', 'YELLOW', 'RED', 'GREEN']
+```
+
+### B. Combining & Partitioning Streams
+```python
+import itertools
+
+# chain(*iterables): Concatenate multiple iterables into one continuous stream
+names1 = ["Alice", "Bob"]
+names2 = ["Charlie", "Diana"]
+combined = list(itertools.chain(names1, names2))
+print(combined)  # -> ['Alice', 'Bob', 'Charlie', 'Diana']
+
+# zip_longest(*iterables, fillvalue): Zip differing lengths without truncating
+a = [1, 2, 3]
+b = ["x", "y"]
+zipped = list(itertools.zip_longest(a, b, fillvalue="-"))
+print(zipped)  # -> [(1, 'x'), (2, 'y'), (3, '-')]
+
+# groupby(iterable, keyfunc): Group consecutive elements
+# Note: Input MUST be sorted by the key function first!
+transactions = [
+    {"dept": "HR", "cost": 100},
+    {"dept": "HR", "cost": 250},
+    {"dept": "IT", "cost": 500},
+]
+for dept, group in itertools.groupby(transactions, key=lambda x: x["dept"]):
+    total = sum(item["cost"] for item in group)
+    print(f"{dept}: ${total}")
+# -> HR: $350
+# -> IT: $500
+```
+
+### C. Combinatorics
+```python
+import itertools
+
+# product: Cartesian product (equivalent to nested for-loops)
+ranks = ["A", "K"]
+suits = ["♠", "♥"]
+deck = list(itertools.product(ranks, suits))
+print(deck)  # -> [('A', '♠'), ('A', '♥'), ('K', '♠'), ('K', '♥')]
+
+# permutations: Ordered arrangements
+print(list(itertools.permutations([1, 2, 3], 2)))
+# -> [(1, 2), (1, 3), (2, 1), (2, 3), (3, 1), (3, 2)]
+
+# combinations: Unordered selections (no duplicates)
+print(list(itertools.combinations([1, 2, 3, 4], 2)))
+# -> [(1, 2), (1, 3), (1, 4), (2, 3), (2, 4), (3, 4)]
+```
+
+## 2. Higher-Order Functions with `functools`
+
+### A. Memoization with `lru_cache` and `cache`
+`@lru_cache` decorates a function to memoize its return values based on hashable arguments, drastically speeding up recursive or expensive operations.
+
+```python
+import functools
+import time
+
+@functools.lru_cache(maxsize=128)
+def fibonacci(n: int) -> int:
+    if n < 2:
+        return n
+    return fibonacci(n - 1) + fibonacci(n - 2)
+
+start = time.perf_counter()
+result = fibonacci(50)
+duration = time.perf_counter() - start
+
+print(f"Fib(50) = {result} (computed in {duration*1e6:.1f} µs)")
+print("Cache info:", fibonacci.cache_info())
+# -> hits=48, misses=51, maxsize=128, currsize=51
+```
+
+### B. Partial Application with `partial`
+`partial` binds a subset of arguments to a function, creating a new callable with a simpler signature:
+
+```python
+import functools
+
+def send_alert(channel: str, level: str, message: str) -> None:
+    print(f"[{channel.upper()}] [{level.upper()}] {message}")
+
+# Pre-bind channel='slack' and level='critical'
+notify_pagerduty = functools.partial(send_alert, "pagerduty", "critical")
+
+# Simple one-argument caller
+notify_pagerduty("Database cluster replication lag exceeded 10s!")
+# -> [PAGERDUTY] [CRITICAL] Database cluster replication lag exceeded 10s!
+```
+
+### C. Cumulative Reductions with `reduce`
+```python
+import functools
+import operator
+
+numbers = [1, 2, 3, 4, 5]
+product = functools.reduce(operator.mul, numbers, 1)
+print("Product:", product)  # -> 120
+```
+
+## Common Mistakes & Anti-Patterns
+
+### Mistake: Forgetting to Sort Before `itertools.groupby`
+`groupby` only aggregates *consecutive* matching keys. If data is not sorted, duplicate group keys appear multiple times:
+```python
+# ❌ INCORRECT:
+items = ["apple", "banana", "apple"]
+for k, g in itertools.groupby(items):
+    print(k, list(g))
+# Output has TWO distinct 'apple' groups!
+
+# ✅ CORRECT: Sort first
+items_sorted = sorted(items)
+for k, g in itertools.groupby(items_sorted):
+    print(k, list(g))
+```
+
+## Practice Exercises
+
+### Exercise 1: Windowed Chunker
+Write a function `sliding_window(iterable, n=2)` that yields overlapping tuples of length `n` from any iterable. For example: `[1, 2, 3, 4]` with `n=2` produces `(1, 2)`, `(2, 3)`, `(3, 4)`. Use `itertools.islice` or `tee`.
+
+### Exercise 2: Flattening Arbitrary Nested Lists
+Write a function `flatten_batches(batch_list)` using `itertools.chain.from_iterable` that flattens a 2D list of varying sizes into a single list.
+
+## Exercise Solutions
+
+```python
+import itertools
+from collections import deque
+
+# Solution 1:
+def sliding_window(iterable, n=2):
+    it = iter(iterable)
+    window = deque(itertools.islice(it, n), maxlen=n)
+    if len(window) == n:
+        yield tuple(window)
+    for x in it:
+        window.append(x)
+        yield tuple(window)
+
+print(list(sliding_window([1, 2, 3, 4, 5], 3)))
+# -> [(1, 2, 3), (2, 3, 4), (3, 4, 5)]
+
+# Solution 2:
+def flatten_batches(batch_list):
+    return list(itertools.chain.from_iterable(batch_list))
+
+batches = [["order1", "order2"], ["order3"], ["order4", "order5", "order6"]]
+print(flatten_batches(batches))
+# -> ['order1', 'order2', 'order3', 'order4', 'order5', 'order6']
+```
+
+## Summary
+
+- `itertools` provides memory-efficient, streaming iterators evaluated lazily on demand.
+- `islice` slices any iterator; `chain` concatenates streams without intermediate allocations.
+- Always `sort()` data before passing it to `itertools.groupby()`.
+- Use `functools.lru_cache` to memoize costly pure computations.
+- Use `functools.partial` to freeze specific function arguments for ergonomic callbacks.
+
+## Next Step
+
+Build robust, self-documenting command-line applications in [Command-Line Interfaces with argparse](/docs/python/modules/cli-with-argparse).

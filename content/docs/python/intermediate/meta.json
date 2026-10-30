@@ -1,0 +1,11 @@
+{
+  "title": "Intermediate Features",
+  "pages": [
+    "comprehensions",
+    "iterators-and-generators",
+    "decorators-and-closures",
+    "context-managers",
+    "exception-handling",
+    "type-hints-and-static-typing"
+  ]
+}

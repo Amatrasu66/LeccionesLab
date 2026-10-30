@@ -1,0 +1,237 @@
+---
+title: Strings & Text Processing
+description: Master Python string indexing, extended slicing, Unicode representation, string methods, f-strings, and formatting.
+---
+
+In Python, the `str` type represents sequences of Unicode code points. Python strings are **immutable**: once created in memory, individual characters cannot be modified in place. Understanding string operations, slicing ergonomics, and modern formatting is fundamental to data processing.
+
+## Learning Objectives
+
+By completing this lesson, you will be able to:
+- Explain Python's Unicode representation model and string immutability.
+- Access characters via positive and negative indexing.
+- Extract substrings using extended slicing `[start:stop:step]`.
+- Format dynamic text using modern **f-strings** (including format specifiers and debug syntax).
+- Transform text with core string methods: `.split()`, `.join()`, `.strip()`, `.replace()`, and `.casefold()`.
+- Use raw strings (`r"..."`) for regular expressions and filesystem paths.
+
+## Prerequisites
+
+- [Syntax & Primitive Data Types](/docs/python/basics/syntax-and-types)
+- [Control Flow & Pattern Matching](/docs/python/basics/control-flow)
+
+## 1. String Immutability & Memory Representation
+
+In Python, strings are immutable sequences of Unicode characters (internally optimized via PEP 393 to use 1, 2, or 4 bytes per code point depending on character ranges):
+
+```python
+language = "Python"
+
+# ❌ TypeError: 'str' object does not support item assignment
+# language[0] = "J"
+
+# ✅ Construct a new string when modifications are needed
+updated_language = "J" + language[1:]
+print(updated_language)  # -> Jython
+```
+
+Because strings are immutable, methods like `.replace()`, `.upper()`, or `.strip()` always return a **new string object** rather than modifying the original.
+
+## 2. String Literals & Raw Strings
+
+Python supports single quotes `'`, double quotes `"`, triple quotes `'''` or `"""` for multiline text, and raw string prefixes:
+
+```python
+# Standard multiline docstring
+query = """
+SELECT id, email, created_at
+FROM users
+WHERE status = 'active'
+"""
+
+# Raw string prefix r"..." disables backslash escape interpretation
+# Crucial for regular expressions and Windows file paths:
+regex_pattern = r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b"
+windows_path = r"C:\Users\Developer\workspace\project"
+```
+
+## 3. Indexing & Extended Slicing
+
+### Zero-Based and Negative Indexing
+
+Python strings can be indexed from the left starting at `0`, or from the right starting at `-1`:
+
+```text
+ String:   P   y   t   h   o   n
+ Index:    0   1   2   3   4   5
+Negative: -6  -5  -4  -3  -2  -1
+```
+
+```python
+word = "Python"
+print(word[0])   # -> P (first character)
+print(word[-1])  # -> n (last character)
+```
+
+### Extended Slicing: `[start:stop:step]`
+
+Slicing extracts a contiguous subsequence:
+- `start`: Index where slice begins (inclusive, default `0`).
+- `stop`: Index where slice ends (exclusive, default length).
+- `step`: Stride amount (default `1`).
+
+```python
+text = "LeccionesLab"
+
+# Substrings
+print(text[0:9])    # -> Lecciones (indices 0 through 8)
+print(text[9:])     # -> Lab (from index 9 to the end)
+print(text[:9])     # -> Lecciones (from start to index 8)
+
+# Stepping
+print(text[::2])    # -> LcineLb (every second character)
+
+# Idiomatic string reversal
+print(text[::-1])   # -> baLsenoicceL
+```
+
+## 4. Modern Formatted String Literals (F-Strings)
+
+Introduced in Python 3.6 (PEP 498), **f-strings** provide minimal overhead and high readability by embedding arbitrary expressions directly inside string literals:
+
+```python
+user = "Simran"
+latency = 42.1856
+
+# Direct variable interpolation
+print(f"User: {user}, Latency: {latency} ms")
+
+# Embedded expressions and method calls
+print(f"Uppercase: {user.upper()}, Squared: {5 ** 2}")
+
+# Precision formatting and alignment
+print(f"Rounded: {latency:.2f} ms")       # -> 42.19 ms
+print(f"Padded: {user:>10}")               # -> '    Simran' (right-aligned width 10)
+print(f"Percentage: {0.875:.1%}")          # -> 87.5%
+```
+
+### Self-Documenting Expressions (`=`) in Python 3.8+
+
+Appending `=` prints both the expression itself and its evaluated outcome—invaluable for debugging:
+
+```python
+x = 100
+y = 25
+print(f"{x=}, {y=}, {x + y=}")
+# Output: x=100, y=25, x + y=125
+```
+
+## 5. Essential String Methods
+
+Python strings provide dozens of built-in transformation and inspection methods:
+
+### Cleaning and Trimming
+```python
+raw_input = "   admin@domain.dev \n"
+clean_email = raw_input.strip()
+print(clean_email)  # -> 'admin@domain.dev'
+```
+
+### Splitting and Joining
+The `.split()` method breaks text into a list, and `.join()` joins iterable elements into a single string:
+```python
+csv_row = "alpha,beta,gamma,delta"
+elements = csv_row.split(",")
+print(elements)  # -> ['alpha', 'beta', 'gamma', 'delta']
+
+# Rejoin with custom separator
+joined = " | ".join(elements)
+print(joined)    # -> 'alpha | beta | gamma | delta'
+```
+
+### Searching and Inspecting
+```python
+filename = "report_2026_q1.pdf"
+
+print(filename.startswith("report"))   # -> True
+print(filename.endswith(".pdf"))       # -> True
+print("2026" in filename)              # -> True
+print(filename.find("q1"))             # -> 12 (index)
+print(filename.find("missing"))        # -> -1 (not found)
+```
+
+### Case Conversion
+For case-insensitive comparisons across international Unicode alphabets, always prefer `.casefold()` over `.lower()`:
+```python
+german_word = "straße"
+print(german_word.upper())             # -> STRASSE
+print(german_word.casefold() == "strasse")  # -> True
+```
+
+## Common Mistakes & Debugging
+
+### Mistake 1: Repeated string concatenation in loops
+Because strings are immutable, repeatedly using `+=` inside loops allocates new strings on every iteration, resulting in quadratic $O(N^2)$ time complexity:
+```python
+# ❌ SLOW: Allocates new strings repeatedly
+s = ""
+for word in words:
+    s += word + " "
+
+# ✅ FAST: Accumulate in list and join in O(N) time
+s = " ".join(words)
+```
+
+### Mistake 2: Forgetting that string methods return new strings
+```python
+message = "hello"
+message.upper()  # Has no effect on message!
+print(message)   # -> 'hello'
+
+# Must rebind the result:
+message = message.upper()
+print(message)   # -> 'HELLO'
+```
+
+## Practice Exercises
+
+### Exercise 1 (Beginner): Palindrome Checker
+Write a function `is_palindrome(s: str) -> bool` that checks if a word is spelled identically backwards and forwards, ignoring case and whitespace.
+
+### Exercise 2 (Intermediate): Slug Generator
+Write a function `slugify(title: str) -> str` that transforms a title like `"Learn Python 3.12 Fast!"` into a URL slug `"learn-python-312-fast"`.
+
+## Exercise Solutions
+
+```python
+# Solution 1:
+def is_palindrome(s: str) -> bool:
+    clean = s.strip().casefold()
+    return clean == clean[::-1]
+
+print(is_palindrome("Radar"))    # -> True
+print(is_palindrome("Python"))   # -> False
+
+# Solution 2:
+def slugify(title: str) -> str:
+    # Filter out punctuation, keep alphanumerics and spaces
+    filtered = "".join(c for c in title if c.isalnum() or c.isspace())
+    # Split by whitespace and rejoin with hyphens
+    words = filtered.casefold().split()
+    return "-".join(words)
+
+print(slugify("Learn Python 3.12 Fast!"))
+# -> 'learn-python-312-fast'
+```
+
+## Summary
+
+- Strings are immutable sequences of Unicode code points.
+- Extended slicing syntax is `[start:stop:step]`; `[::-1]` reverses strings.
+- F-strings (`f"..."`) provide fast, expressive string interpolation and formatting.
+- Use `"".join()` to concatenate collections in linear $O(N)$ time.
+- Use `.casefold()` for robust Unicode case-insensitive matching.
+
+## Next Step
+
+Explore Python's dynamic sequence containers in [Lists & Dynamic Arrays](/docs/python/collections/lists).

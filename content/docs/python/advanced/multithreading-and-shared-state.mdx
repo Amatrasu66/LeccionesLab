@@ -1,0 +1,408 @@
+---
+title: Multithreading & Shared State
+description: Concurrency vs parallelism, ThreadPoolExecutor, race conditions, Locks, thread-safe Queues, deadlock prevention, and CPython's Global Interpreter Lock (GIL).
+---
+
+Concurrency is about **dealing with lots of things at once**, while parallelism is about **doing lots of things at once**. Understanding how Python manages OS threads, shared memory state, and synchronization is essential for building responsive servers, background workers, and I/O pipelines.
+
+Because all threads in a Python process share the same memory space, multithreading introduces hazards that do not exist in single-threaded code: **race conditions**, **deadlocks**, and **shared mutation bugs**.
+
+## Learning Objectives
+
+By completing this lesson, you will be able to:
+- Distinguish between concurrency and parallelism, and between I/O-bound and CPU-bound workloads.
+- Launch, join, and manage native operating system threads using `threading.Thread`.
+- Execute concurrent workloads efficiently with `concurrent.futures.ThreadPoolExecutor`.
+- Identify race conditions and protect critical sections using `threading.Lock` and `RLock`.
+- Coordinate producer-consumer pipelines safely using `queue.Queue`.
+- Diagnose deadlocks and apply lock acquisition hierarchies to prevent them.
+- Explain the role, limitations, and evolution of CPython's Global Interpreter Lock (GIL).
+
+## Prerequisites
+
+- [Functions, Signatures & Scopes](/docs/python/basics/functions)
+- [Context Managers & Resource Management](/docs/python/intermediate/context-managers)
+- [Exception Hierarchies & Error Handling](/docs/python/intermediate/exception-handling)
+
+## 1. Concurrency vs. Parallelism & Workload Types
+
+Before writing concurrent code, classify your workload:
+
+- **I/O-Bound Workloads**: Time is spent waiting for external systems (HTTP APIs, database queries, disk reads, network sockets). CPU sits idle while waiting.
+- **CPU-Bound Workloads**: Time is spent performing intensive mathematical, cryptographic, or compression computations on the CPU.
+
+```text
+Concurrency (Interleaving on 1 Core):
+Task 1: ───[Run]───[Wait I/O]───────[Run]───>
+Task 2: ───────────[Run]──────[Wait]────────>
+
+Parallelism (Simultaneous on Multiple Cores):
+Core 1: ───[Task 1 Computing]───────────────>
+Core 2: ───[Task 2 Computing]───────────────>
+```
+
+In Python, **multithreading is ideal for I/O-bound operations**, because while one thread waits for a network socket or file read, the operating system yields CPU time to other threads.
+
+## 2. CPython's Global Interpreter Lock (GIL)
+
+In CPython (the standard Python implementation), the **Global Interpreter Lock (GIL)** is a mutual exclusion lock that prevents multiple native operating system threads from executing Python bytecode simultaneously.
+
+### Why Does the GIL Exist?
+CPython's internal memory manager is not thread-safe. As explored in our [Object Lifecycle](/docs/python/advanced/object-lifecycle-and-memory-management) lesson, reference counts (`ob_refcnt`) are updated continuously on almost every operation. Without the GIL, concurrent access from multiple threads would cause race conditions in memory management, leading to heap corruption and crashes.
+
+### What the GIL Means in Practice
+1. **CPU-bound Python code does NOT run in parallel across CPU cores with standard threads**. Running two CPU-heavy Python loops on two threads will typically run *slower* than running them sequentially, due to thread context-switching overhead!
+2. **I/O-bound code DOES run concurrently**. When a thread initiates an I/O operation (like `socket.recv()` or `time.sleep()`), CPython **releases the GIL**, allowing other threads to run freely.
+3. C-extensions (like NumPy, PyTorch, or cryptography libraries) can explicitly release the GIL during heavy numerical computations, achieving true multi-core parallelism.
+
+<Callout type="note" title="Free-Threaded CPython (PEP 703)">
+Starting in Python 3.13, CPython introduced an experimental **free-threaded build** (disabling the GIL via fine-grained reference counting and biased reference counting). However, this is an optional build variant and not universally enabled in production distributions. For standard Python 3.12+ deployments, code must assume GIL semantics are present.
+</Callout>
+
+## 3. Working with `threading.Thread`
+
+Python's `threading` module interfaces directly with native OS threads (POSIX pthreads on Linux/macOS, Windows threads):
+
+```python
+import threading
+import time
+
+def fetch_data(service_id: int):
+    print(f"[{threading.current_thread().name}] Fetching service {service_id}...")
+    time.sleep(0.5)  # Simulates network I/O; releases the GIL!
+    print(f"[{threading.current_thread().name}] Received service {service_id}")
+
+threads = []
+for i in range(3):
+    t = threading.Thread(target=fetch_data, args=(i,), name=f"Worker-{i}")
+    threads.append(t)
+    t.start()  # Launch thread in the background
+
+# Wait for all threads to complete:
+for t in threads:
+    t.join()
+
+print("All threads finished.")
+```
+
+Expected output (execution order may interleave):
+```text
+[Worker-0] Fetching service 0...
+[Worker-1] Fetching service 1...
+[Worker-2] Fetching service 2...
+[Worker-0] Received service 0
+[Worker-2] Received service 2
+[Worker-1] Received service 1
+All threads finished.
+```
+
+Notice that three 500ms network requests completed in ~500ms total wall time rather than 1500ms!
+
+## 4. Modern Thread Pools: `concurrent.futures.ThreadPoolExecutor`
+
+Managing raw threads manually (`start()`, `join()`, exception catching) is error-prone. Modern Python applications use **`ThreadPoolExecutor`**:
+
+```python
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import time
+
+def download_page(url: str) -> tuple[str, int]:
+    time.sleep(0.2)  # Simulating network latency
+    return (url, 200)
+
+urls = [
+    "https://api.example.com/items",
+    "https://api.example.com/users",
+    "https://api.example.com/orders",
+]
+
+# Create a pool with at most 5 worker threads:
+with ThreadPoolExecutor(max_workers=5) as executor:
+    # Submit tasks and collect Future objects:
+    futures = {executor.submit(download_page, u): u for u in urls}
+
+    # Process results as they finish:
+    for future in as_completed(futures):
+        url = futures[future]
+        try:
+            target_url, status = future.result()
+            print(f"Completed {target_url} with HTTP {status}")
+        except Exception as exc:
+            print(f"Request to {url} generated an exception: {exc}")
+```
+
+The `with` statement guarantees that all threads in the pool are cleanly shut down and joined when the context exits.
+
+## 5. Shared State and Race Conditions
+
+A **race condition** occurs when two or more threads access shared data concurrently and the final result depends on the non-deterministic timing of thread scheduling:
+
+```python
+# BROKEN: Unsynchronized shared counter
+import threading
+import time
+
+counter = 0
+
+def increment():
+    global counter
+    for _ in range(100_000):
+        # Under the hood: LOAD counter, ADD 1, STORE counter
+        # Threads can be preempted between LOAD and STORE!
+        counter += 1
+
+t1 = threading.Thread(target=increment)
+t2 = threading.Thread(target=increment)
+t1.start(); t2.start()
+t1.join(); t2.join()
+
+print(f"Final counter: {counter}")  # Expected 200,000, but often ~140,000!
+```
+
+### The Misconception About the GIL and Thread Safety
+Many developers believe: *"Python has a GIL, so operations are thread-safe!"*  
+**This is dangerously false.** The GIL only ensures that CPython internals are protected. Python can pause a thread between *any two bytecode instructions*. Because `counter += 1` translates into multiple bytecode instructions (`LOAD_GLOBAL`, `BINARY_OP`, `STORE_GLOBAL`), threads interleave mid-calculation and overwrite each other's updates.
+
+### Mutual Exclusion with `threading.Lock`
+
+Use a `Lock` to guarantee that only one thread executes a critical section at a time:
+
+```python
+import threading
+
+counter = 0
+lock = threading.Lock()
+
+def safe_increment():
+    global counter
+    for _ in range(100_000):
+        # Context manager acquires lock on enter, releases on exit:
+        with lock:
+            counter += 1
+
+t1 = threading.Thread(target=safe_increment)
+t2 = threading.Thread(target=safe_increment)
+t1.start(); t2.start()
+t1.join(); t2.join()
+
+print(f"Safe counter: {counter}")  # Guaranteed exactly 200,000!
+```
+
+## 6. Deadlocks and Lock Ordering
+
+A **deadlock** occurs when two or more threads are permanently blocked waiting for locks held by each other:
+
+```text
+Deadlock Scenario:
+Thread 1 holds Lock A, waiting for Lock B.
+Thread 2 holds Lock B, waiting for Lock A.
+Result: The application freezes forever.
+```
+
+```python
+# DANGEROUS: Inconsistent lock acquisition order
+lock_a = threading.Lock()
+lock_b = threading.Lock()
+
+def thread_1_work():
+    with lock_a:
+        with lock_b:
+            pass
+
+def thread_2_work():
+    with lock_b:  # ACQUIRES IN REVERSE ORDER!
+        with lock_a:
+            pass
+```
+
+### Strategies to Prevent Deadlocks
+1. **Global Lock Hierarchy**: Always acquire multiple locks in a strict, consistent order across all threads (e.g. acquire `Lock A` before `Lock B` everywhere).
+2. **Lock Timeouts**: Use `lock.acquire(timeout=5.0)`. If the lock cannot be acquired within 5 seconds, back off and retry.
+3. **Avoid Shared State**: Use queues instead of multiple shared locks.
+
+## 7. Thread-Safe Communication with `queue.Queue`
+
+The cleanest way to coordinate threads is the **Producer-Consumer pattern** using `queue.Queue`. The `Queue` class internally handles all locking and thread signaling:
+
+```python
+import threading
+import queue
+import time
+
+work_queue: queue.Queue[str | None] = queue.Queue(maxsize=10)
+
+def producer():
+    for item_id in range(5):
+        msg = f"Task-{item_id}"
+        work_queue.put(msg)  # Blocks if queue is full (backpressure!)
+        print(f"[Producer] Queued {msg}")
+        time.sleep(0.1)
+    
+    # Send sentinel value None to notify consumer to terminate
+    work_queue.put(None)
+
+def consumer():
+    while True:
+        task = work_queue.get()  # Blocks until an item is available
+        if task is None:
+            work_queue.task_done()
+            break
+        print(f"[Consumer] Processing {task}...")
+        time.sleep(0.2)
+        work_queue.task_done()
+
+t_prod = threading.Thread(target=producer)
+t_cons = threading.Thread(target=consumer)
+t_prod.start(); t_cons.start()
+t_prod.join(); t_cons.join()
+```
+
+## Practical Example: Multi-Threaded HTTP Health Checker
+
+```python
+from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass
+import time
+
+@dataclass(frozen=True)
+class ServiceEndpoint:
+    name: str
+    host: str
+    timeout_seconds: float = 2.0
+
+@dataclass(frozen=True)
+class HealthStatus:
+    name: str
+    is_healthy: bool
+    latency_ms: float
+    error_message: str | None = None
+
+def check_endpoint(endpoint: ServiceEndpoint) -> HealthStatus:
+    t_start = time.perf_counter()
+    try:
+        # Simulate simulated socket connection / DNS probe
+        time.sleep(0.15)
+        if "failing" in endpoint.host:
+            raise ConnectionRefusedError("Connection refused by host")
+        latency = (time.perf_counter() - t_start) * 1000
+        return HealthStatus(endpoint.name, True, round(latency, 2))
+    except Exception as exc:
+        latency = (time.perf_counter() - t_start) * 1000
+        return HealthStatus(endpoint.name, False, round(latency, 2), str(exc))
+
+endpoints = [
+    ServiceEndpoint("Auth API", "auth.company.internal"),
+    ServiceEndpoint("Payments", "payments.company.internal"),
+    ServiceEndpoint("Legacy DB", "failing.db.internal"),
+    ServiceEndpoint("Cache Node", "redis-01.company.internal"),
+]
+
+with ThreadPoolExecutor(max_workers=4) as pool:
+    results = list(pool.map(check_endpoint, endpoints))
+
+for res in results:
+    status_str = "OK" if res.is_healthy else f"FAIL ({res.error_message})"
+    print(f"[{res.name:12}] {status_str} in {res.latency_ms} ms")
+```
+
+## Common Mistakes & Anti-Patterns
+
+### 1. Using Threads for CPU-Heavy Mathematics
+Running CPU-intensive algorithms (matrix multiplication, image processing, cryptography) in Python threads will not speed up execution due to the GIL. Use `multiprocessing` or native C/Rust extensions instead.
+
+### 2. Spawning Unbounded Raw Threads
+Creating `threading.Thread` in a web request handler without limits will quickly exhaust operating system file descriptors and thread memory limits (often crashing the OS with `RuntimeError: can't start new thread`). Always use a bounded `ThreadPoolExecutor`.
+
+## Practice Exercises
+
+### Exercise 1: Thread-Safe In-Memory Cache
+Implement a `ThreadSafeCache` class with methods `get(key: str) -> Any` and `set(key: str, value: Any) -> None` protected by a `threading.Lock`. Use 10 concurrent threads to write and read 1,000 keys simultaneously without errors.
+
+### Exercise 2: Work Queue with Poison Pill Termination
+Create a system with 1 producer thread and 3 worker consumer threads sharing a `queue.Queue`. The producer pushes 10 jobs into the queue and terminates the workers gracefully by pushing one `None` sentinel ("poison pill") per worker.
+
+## Exercise Solutions & Reasoning
+
+```python
+# Solution 1
+import threading
+
+class ThreadSafeCache:
+    def __init__(self):
+        self._store = {}
+        self._lock = threading.Lock()
+
+    def get(self, key: str):
+        with self._lock:
+            return self._store.get(key)
+
+    def set(self, key: str, value: object):
+        with self._lock:
+            self._store[key] = value
+
+cache = ThreadSafeCache()
+threads = []
+for i in range(10):
+    t = threading.Thread(target=lambda idx: cache.set(f"k_{idx}", idx * 10), args=(i,))
+    threads.append(t)
+    t.start()
+
+for t in threads:
+    t.join()
+
+assert cache.get("k_5") == 50
+
+# Solution 2
+import queue
+import threading
+
+job_q = queue.Queue()
+processed_jobs = []
+lock = threading.Lock()
+
+def worker(worker_id: int):
+    while True:
+        job = job_q.get()
+        if job is None:  # Poison pill received
+            job_q.task_done()
+            break
+        with lock:
+            processed_jobs.append((worker_id, job))
+        job_q.task_done()
+
+workers = [threading.Thread(target=worker, args=(i,)) for i in range(3)]
+for w in workers:
+    w.start()
+
+for j in range(10):
+    job_q.put(f"item_{j}")
+
+# Send one poison pill per worker:
+for _ in range(3):
+    job_q.put(None)
+
+job_q.join()
+for w in workers:
+    w.join()
+
+assert len(processed_jobs) == 10
+```
+
+## Summary
+
+- Multithreading in Python is suited for I/O-bound tasks where threads wait for network, disk, or databases.
+- The CPython GIL prevents true parallel execution of Python bytecode across multiple threads.
+- The GIL does not make Python code thread-safe; critical sections must be synchronized with `threading.Lock`.
+- Prefer `concurrent.futures.ThreadPoolExecutor` over raw `threading.Thread` instances.
+- Use `queue.Queue` for thread-safe producer-consumer communication with built-in backpressure.
+
+## Official Documentation References
+
+- [`threading` — Thread-based parallelism](https://docs.python.org/3/library/threading.html)
+- [`concurrent.futures` — Launching parallel tasks](https://docs.python.org/3/library/concurrent.futures.html)
+- [`queue` — A synchronized queue class](https://docs.python.org/3/library/queue.html)
+- [CPython Global Interpreter Lock Concept](https://docs.python.org/3/glossary.html#term-global-interpreter-lock)
+
+## Next Step
+
+Bypass the GIL and achieve true multi-core parallel execution for CPU-bound tasks in [Multiprocessing & Parallel Execution](/docs/python/advanced/multiprocessing-and-parallel-execution).

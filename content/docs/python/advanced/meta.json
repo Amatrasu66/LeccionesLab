@@ -1,0 +1,12 @@
+{
+  "title": "Advanced Python & Runtime Internals",
+  "pages": [
+    "object-lifecycle-and-memory-management",
+    "performance-and-profiling",
+    "multithreading-and-shared-state",
+    "multiprocessing-and-parallel-execution",
+    "asynchronous-python-with-asyncio",
+    "advanced-runtime-behavior",
+    "concurrency-patterns-and-reliability"
+  ]
+}

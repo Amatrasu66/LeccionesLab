@@ -1,0 +1,387 @@
+---
+title: Object Lifecycle & Memory Management
+description: Deep dive into Python's memory model, object lifetime, reference counting, cyclic garbage collection, weak references, and leak diagnostics with tracemalloc.
+---
+
+Understanding how Python allocates, tracks, and reclaims memory is essential for building long-running services, high-throughput workers, and memory-efficient data pipelines.
+
+A common misconception is that Python handles memory automatically so developers never need to think about it. In reality, memory leaks in Python happen regularly—not through dangling pointers as in C, but through **unintended reference retention** where objects remain reachable long after they are needed.
+
+## Learning Objectives
+
+By completing this lesson, you will be able to:
+- Explain the distinction between Python names (bindings), heap objects, and reference pointers.
+- Distinguish Python language memory guarantees from CPython implementation details.
+- Trace reference count increments and decrements and identify reference cycles.
+- Understand CPython's generational cyclic garbage collector (`gc` module) and its thresholds.
+- Break reference cycles and implement zero-cost caches using `weakref`.
+- Diagnose memory growth and retainers using `tracemalloc` and snapshot comparisons.
+- Contrast shallow vs. deep copies in memory and avoid unwanted object sharing.
+
+## Prerequisites
+
+- [Variables, Assignment & References](/docs/python/basics/variables)
+- [Lists & Dynamic Arrays](/docs/python/collections/lists)
+- [Classes, Objects & Attributes](/docs/python/oop/classes-objects-and-attributes)
+
+## 1. Object Identity, Names, and References
+
+In Python, variables are **symbolic names bound to object references** in namespaces (`locals()`, `globals()`, or instance `__dict__`). They are not direct memory slots:
+
+```python
+# 'a' and 'b' are two distinct names pointing to the same underlying heap object
+a = [1, 2, 3]
+b = a
+
+print(f"id(a) == id(b): {id(a) == id(b)}")  # True
+print(f"a is b: {a is b}")                  # True
+```
+
+An object comes into existence when allocated on the heap (via `__new__`), and stays alive as long as it remains **reachable** from at least one live reference in the root set (global scope, active stack frames, or module namespaces).
+
+<Callout type="note" title="Language Specification vs. CPython Implementation">
+The Python Language Reference specifies that unreachable objects must eventually be reclaimed. It does **not** mandate how reclamation occurs. In **CPython**, memory management combines immediate **reference counting** with a **generational cyclic garbage collector**. Alternative implementations like PyPy use tracing generational collectors, while Jython and IronPython rely on the underlying JVM and CLR runtimes.
+</Callout>
+
+## 2. Reference Counting in CPython
+
+In CPython, every object is represented by a `PyObject` structure containing an internal field called `ob_refcnt`:
+
+```c
+// CPython internal definition (simplified)
+struct _object {
+    _PyObject_HEAD_EXTRA
+    Py_ssize_t ob_refcnt;     // Reference counter
+    PyTypeObject *ob_type;    // Pointer to type descriptor
+};
+```
+
+Whenever a name is bound, passed to a function, or placed into a container, `ob_refcnt` increases. When a name goes out of scope, is reassigned, or is deleted via `del`, `ob_refcnt` decreases:
+
+```python
+import sys
+
+x = ["payload"]
+print(sys.getrefcount(x))
+# Note: sys.getrefcount(x) temporarily increments the count by 1
+# because 'x' is passed as an argument to getrefcount!
+```
+
+When an object's reference count drops to zero, CPython reclaims its memory **immediately and deterministically**, calling its destructor (`__del__` if present) without waiting for a garbage collection sweep.
+
+## 3. The Flaw of Reference Counting: Reference Cycles
+
+Reference counting cannot collect objects that refer to each other in a closed loop (a **reference cycle**):
+
+```python
+class Node:
+    def __init__(self, name: str):
+        self.name = name
+        self.peer = None
+
+# Create two nodes that reference each other
+n1 = Node("A")
+n2 = Node("B")
+n1.peer = n2
+n2.peer = n1
+
+# Remove external references:
+del n1
+del n2
+```
+
+Even though both `Node` instances are completely unreachable from any variable in our program, their internal `ob_refcnt` values are still `1` (because `n1.peer` points to `n2` and `n2.peer` points to `n1`). Plain reference counting would leak this memory forever!
+
+```text
+Unreachable Reference Cycle:
+┌─────────────────┐       peer        ┌─────────────────┐
+│ Node("A")       │ ────────────────> │ Node("B")       │
+│ ob_refcnt = 1   │ <──────────────── │ ob_refcnt = 1   │
+└─────────────────┘       peer        └─────────────────┘
+         ▲                                     ▲
+         │ (external root names deleted)       │
+```
+
+## 4. CPython's Generational Cyclic Garbage Collector (`gc`)
+
+To resolve reference cycles, CPython includes a secondary **cyclic garbage collector** (`gc` module).
+
+The cyclic GC groups all trackable container objects (lists, dictionaries, custom class instances) into **three generations**:
+
+- **Generation 0**: Newly allocated container objects. Collected frequently.
+- **Generation 1**: Objects surviving a Gen 0 sweep. Collected less frequently.
+- **Generation 2**: Long-lived objects surviving Gen 1 sweeps. Collected least frequently.
+
+```python
+import gc
+
+# Inspect collection counts and thresholds:
+print("GC Thresholds (Gen0, Gen1, Gen2):", gc.get_threshold())
+# Defaults typically (700, 10, 10) in CPython:
+# Gen 0 is collected when new container allocations exceed deallocations by 700.
+
+# Manually trigger a full cyclic collection:
+unreachable_count = gc.collect()
+print(f"Collected {unreachable_count} cyclically dead objects.")
+```
+
+The cyclic collector uses a pointer-traversal algorithm that tests if objects are only reachable from other members of the isolated cluster. If so, the entire cycle is collected together.
+
+## 5. Non-Owning References with `weakref`
+
+When you want an object to reference another without preventing its garbage collection (for example, parent pointers in trees, or observer listener lists), use the **`weakref` module**:
+
+```python
+import weakref
+
+class CacheTarget:
+    def __init__(self, name: str):
+        self.name = name
+
+target = CacheTarget("DatabaseResult")
+# Create a weak reference:
+ref = weakref.ref(target)
+
+print(ref())  # Returns target: <__main__.CacheTarget object at 0x...>
+print(ref().name)  # 'DatabaseResult'
+
+# Delete the only strong reference:
+del target
+
+# The target is collected immediately!
+print(ref())  # None!
+```
+
+### `weakref.WeakValueDictionary`
+A common pattern for memory-friendly caching is `WeakValueDictionary`, where entries automatically vanish when their values are collected:
+
+```python
+import weakref
+
+class HeavyAsset:
+    def __init__(self, asset_id: str):
+        self.asset_id = asset_id
+
+cache = weakref.WeakValueDictionary()
+
+asset1 = HeavyAsset("textures/skybox.png")
+cache["skybox"] = asset1
+
+print("skybox" in cache)  # True
+
+# Rebind asset1 (no more strong references to the original object)
+del asset1
+
+print("skybox" in cache)  # False: entry was automatically purged!
+```
+
+## 6. Identifying Real-World Memory Leaks with `tracemalloc`
+
+Python applications rarely leak raw memory from C extensions; they leak by **inadvertently keeping references alive**. Classic causes include:
+1. Growing global lists or module-level registries without bounds.
+2. Closures inadvertently capturing large outer objects.
+3. Exception tracebacks (`__traceback__`) keeping stack frames alive.
+
+The standard library `tracemalloc` module captures memory allocation stack traces:
+
+```python
+import tracemalloc
+
+# Start tracking allocations:
+tracemalloc.start()
+
+# Take an initial baseline snapshot
+snapshot_before = tracemalloc.take_snapshot()
+
+# Simulate a leaky cache storing tuples
+leaky_cache = []
+for i in range(10_000):
+    leaky_cache.append((f"key_{i}", [i] * 10))
+
+# Take a second snapshot after workload
+snapshot_after = tracemalloc.take_snapshot()
+
+# Compare differences sorted by allocated size:
+top_stats = snapshot_after.compare_to(snapshot_before, "lineno")
+
+print("[ Top 3 Memory Allocation Differences ]")
+for stat in top_stats[:3]:
+    print(stat)
+```
+
+Expected output:
+```text
+[ Top 3 Memory Allocation Differences ]
+/app/worker.py:12: size=896 KiB (+896 KiB), count=10000 (+10000), average=92 B
+```
+
+`tracemalloc` pinpoints the exact file and line number responsible for net memory growth.
+
+## 7. Memory Layout & Shallow vs. Deep Copies
+
+Recall from our [Variables](/docs/python/basics/variables) and [Tuples](/docs/python/collections/tuples) lessons that compound objects store references to other objects.
+
+| Copy Type | Method | What Gets Duplicated | Nested Mutation Impact |
+|---|---|---|---|
+| **Aliasing** | `b = a` | Nothing; new name points to same object | Direct mutation impacts all aliases |
+| **Shallow Copy** | `b = a.copy()` or `b = list(a)` | Outer container only | Modifying inner elements modifies both |
+| **Deep Copy** | `b = copy.deepcopy(a)` | Recursively duplicates all nested objects | Completely isolated in memory |
+
+```python
+import copy
+
+original = [["A", "B"], ["C", "D"]]
+shallow = list(original)
+deep = copy.deepcopy(original)
+
+original[0][0] = "MODIFIED"
+
+print(shallow[0][0])  # 'MODIFIED' (shares nested inner list)
+print(deep[0][0])     # 'A' (completely isolated allocation)
+```
+
+## Practical Example: Cycle-Free Tree Structure with Parent Pointers
+
+In hierarchical trees, child nodes frequently need to navigate back to their parent. Direct strong references create circular dependencies between every parent and child:
+
+```python
+import weakref
+
+class TreeNode:
+    def __init__(self, value: str):
+        self.value = value
+        self.children: list["TreeNode"] = []
+        # Store parent as a weak reference to eliminate cycles!
+        self._parent_ref: weakref.ReferenceType["TreeNode"] | None = None
+
+    @property
+    def parent(self) -> "TreeNode | None":
+        return self._parent_ref() if self._parent_ref is not None else None
+
+    def add_child(self, child: "TreeNode") -> None:
+        child._parent_ref = weakref.ref(self)
+        self.children.append(child)
+
+    def root_path(self) -> list[str]:
+        path = [self.value]
+        curr = self.parent
+        while curr is not None:
+            path.append(curr.value)
+            curr = curr.parent
+        return path[::-1]
+```
+
+Testing cycle-free reclamation:
+
+```python
+root = TreeNode("root")
+child = TreeNode("subnode")
+root.add_child(child)
+
+print(child.root_path())  # ['root', 'subnode']
+
+# When root is deleted, both nodes are freed immediately
+# without waiting for the cyclic GC!
+```
+
+## Common Mistakes & Anti-Patterns
+
+### 1. Implementing `__del__` with Reference Cycles
+In older Python versions (pre-3.4), cyclic objects with `__del__` methods could not be collected by cyclic GC and were stranded in `gc.garbage`. While PEP 442 resolved this in modern Python, relying on `__del__` for resource cleanup is still an anti-pattern. Always prefer explicit context managers (`with` blocks) for deterministic cleanup (see [Context Managers](/docs/python/intermediate/context-managers)).
+
+### 2. Retaining Stack Tracebacks in Global Handlers
+Storing caught exceptions in global structures can leak entire call stacks, including all local variables in every frame:
+```python
+last_error = None
+try:
+    process_batch()
+except Exception as e:
+    last_error = e  # Keeps frame and all local variables alive in e.__traceback__!
+```
+**Fix:** Explicitly clear the traceback with `last_error = str(e)` or delete `e` when finished.
+
+## Practice Exercises
+
+### Exercise 1: Reference Cycle Detector
+Create a function `count_cycles(obj_factory)` that instantiates an object graph, deletes the outer reference, and calls `gc.collect()`. It must return the number of unreachable cyclic objects that had to be collected by the cyclic collector.
+
+### Exercise 2: Self-Expiring Observer Registry
+Implement an `EventPublisher` class using `weakref.WeakSet` so that subscribers register via `publisher.subscribe(listener)`. If a subscriber goes out of scope in client code, it must automatically stop receiving notifications without requiring an explicit unsubscribe call.
+
+## Exercise Solutions & Reasoning
+
+```python
+# Solution 1
+import gc
+
+def count_cycles(obj_factory) -> int:
+    gc.collect()  # Clean baseline
+    obj = obj_factory()
+    del obj
+    collected = gc.collect()
+    return collected
+
+class LeakyGraph:
+    def __init__(self):
+        self.cycle = self
+
+# Verifying cycle collection:
+cycles = count_cycles(LeakyGraph)
+assert cycles > 0
+
+# Solution 2
+import weakref
+
+class EventPublisher:
+    def __init__(self):
+        # WeakSet stores weak references to listeners
+        self._listeners = weakref.WeakSet()
+
+    def subscribe(self, listener: object) -> None:
+        self._listeners.add(listener)
+
+    def notify(self, message: str) -> int:
+        count = 0
+        for listener in list(self._listeners):
+            if hasattr(listener, "on_event"):
+                listener.on_event(message)
+                count += 1
+        return count
+
+class Subscriber:
+    def __init__(self, name: str):
+        self.name = name
+        self.received = []
+
+    def on_event(self, msg: str):
+        self.received.append(msg)
+
+pub = EventPublisher()
+s1 = Subscriber("A")
+s2 = Subscriber("B")
+pub.subscribe(s1)
+pub.subscribe(s2)
+
+assert pub.notify("hello") == 2
+del s2  # s2 collected, WeakSet automatically removes it
+assert pub.notify("world") == 1
+```
+
+## Summary
+
+- CPython uses immediate reference counting supplemented by a 3-generation cyclic garbage collector.
+- Reference cycles occur when objects reference each other, preventing reference counts from hitting zero.
+- `weakref` provides non-owning references that break cycles in trees, graphs, and caches.
+- Use `tracemalloc` to record and compare snapshots to diagnose memory growth in production applications.
+- Prefer explicit context managers over `__del__` for releasing external resources.
+
+## Official Documentation References
+
+- [Python Data Model — Objects, values and types](https://docs.python.org/3/reference/datamodel.html#objects-values-and-types)
+- [`gc` — Garbage Collector interface](https://docs.python.org/3/library/gc.html)
+- [`weakref` — Weak references](https://docs.python.org/3/library/weakref.html)
+- [`tracemalloc` — Trace memory allocations](https://docs.python.org/3/library/tracemalloc.html)
+
+## Next Step
+
+Explore Big-O execution metrics, execution timing, CPU profiling, and memoization in [Performance & Profiling](/docs/python/advanced/performance-and-profiling).

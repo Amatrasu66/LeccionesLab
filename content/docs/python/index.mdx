@@ -1,0 +1,192 @@
+---
+title: Python Curriculum & Learning Roadmap
+description: Comprehensive Python 3.12+ curriculum taxonomy, from fundamental syntax and memory models to data structures, professional practices, and runtime architecture.
+---
+
+Welcome to the **LeccionesLab Python Curriculum**. This comprehensive pathway is designed to guide developers from foundational concepts to production-grade system engineering and CPython runtime internals.
+
+Every lesson emphasizes **accurate mental models**, **memory mechanics**, **Big-O complexity guarantees**, and **idiomatic Python 3.12+ patterns**.
+
+---
+
+## Curriculum Taxonomy & Roadmap
+
+The curriculum is structured into ten sequential disciplines:
+
+```text
+LeccionesLab Python Learning Progression
+┌──────────────────────────────────────────────────────────────┐
+│  Track A: Python Foundations (Available)                    │
+│  Environment Isolation · Syntax & Types · Control Flow · I/O │
+└──────────────────────────────┬───────────────────────────────┘
+                               │
+                               ▼
+┌──────────────────────────────────────────────────────────────┐
+│  Track B: Strings & Data Collections (Available)             │
+│  Lists (Dynamic Arrays) · Tuples · Dictionaries · Hash Sets  │
+└──────────────────────────────┬───────────────────────────────┘
+                               │
+                               ▼
+┌──────────────────────────────────────────────────────────────┐
+│  Track C: Modules, Packages & Standard Library (Available)   │
+│  Imports · Pathlib · Subprocess · Packaging & pyproject.toml  │
+└──────────────────────────────┬───────────────────────────────┘
+                               │
+                               ▼
+┌──────────────────────────────────────────────────────────────┐
+│  Track D: Intermediate Language Features (Available)         │
+│  Comprehensions · Iterators · Closures · Decorators · Typing │
+└──────────────────────────────┬───────────────────────────────┘
+                               │
+                               ▼
+┌──────────────────────────────────────────────────────────────┐
+│  Track E: Object-Oriented Programming (Available)            │
+│  Classes · MRO & super() · Dunder Methods · Protocols & ABCs │
+└──────────────────────────────┬───────────────────────────────┘
+                               │
+                               ▼
+┌──────────────────────────────────────────────────────────────┐
+│  Track F: Advanced Python & Runtime Internals (Available)    │
+│  Garbage Collection · Asyncio Event Loops · GIL · Profiling  │
+└──────────────────────────────┬───────────────────────────────┘
+                               │
+                               ▼
+┌──────────────────────────────────────────────────────────────┐
+│  Track G: Professional Engineering Practices (Upcoming)      │
+│  Testing with pytest · Ruff Toolchains · Design Patterns     │
+└──────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## Track A: Python Foundations
+
+Foundational concepts governing syntax, execution models, and sequential logic.
+
+| Module | Level | Key Concepts | Status |
+|---|---|---|---|
+| **[Getting Started](/docs/python/getting-started)** | Beginner | Python 3.12+, `venv` hermetic isolation, script execution, IDE setup | **Available** |
+| **[Syntax & Primitive Data Types](/docs/python/basics/syntax-and-types)** | Beginner | Indentation rules, statements vs. expressions, `int`, `float`, `bool`, `NoneType` | **Available** |
+| **[Variables & Assignment](/docs/python/basics/variables)** | Beginner | Memory references, object rebinding, `is` vs. `==`, mutability semantics | **Available** |
+| **[Operators & Expressions](/docs/python/basics/operators-and-expressions)** | Beginner | True vs. floor division, chained comparisons, short-circuit `and`/`or`, walrus `:=` | **Available** |
+| **[Control Flow & Pattern Matching](/docs/python/basics/control-flow)** | Beginner | `if`/`elif`/`else`, Python 3.10+ `match`/`case`, loops, loop `else` idiom | **Available** |
+| **[Strings & Text Processing](/docs/python/basics/strings)** | Beginner | Unicode immutability, extended slicing `[::-1]`, f-strings, string methods | **Available** |
+| **[Functions & Scope](/docs/python/basics/functions)** | Intermediate | `def` signatures, `*args`, `**kwargs`, LEGB scope hierarchy, default traps | **Available** |
+| **[Built-in Functions Reference](/docs/python/reference/built-in-functions)** | Reference | Specifications for `len()`, `zip()`, `map()`, and `enumerate()` | **Available** |
+
+---
+
+## Track B: Strings & Collections
+
+Understanding memory layout, pointer arrays, and algorithmic complexity for core collection types.
+
+| Module | Level | Key Concepts | Status |
+|---|---|---|---|
+| **[Lists & Dynamic Arrays](/docs/python/collections/lists)** | Beginner–Intermediate | Contiguous pointer arrays, over-allocation, in-place mutation, list comprehensions | **Available** |
+| **[Tuples, Immutability & Unpacking](/docs/python/collections/tuples)** | Beginner–Intermediate | Fixed memory allocation, starred unpacking `*rest`, hashability, `NamedTuple` | **Available** |
+| **[Dictionaries & Hash Tables](/docs/python/collections/dictionaries)** | Intermediate | Compact hash table layout, $O(1)$ lookups, view objects, union operator `|` | **Available** |
+| **[Sets & Mathematical Operations](/docs/python/collections/sets)** | Intermediate | Hash sets, deduplication, union `|`, intersection `&`, difference `-`, `frozenset` | **Available** |
+
+---
+
+## Track C: Modules, Packages & Standard Library
+
+Code architecture, modular boundaries, system integration, and standard library tools.
+
+| Module | Level | Key Concepts | Status |
+|---|---|---|---|
+| **[Modules, Namespaces & Imports](/docs/python/modules/modules-and-imports)** | Intermediate | Import machinery, `sys.modules` caching, `sys.path` resolution order | **Available** |
+| **[Packages & Circular Imports](/docs/python/modules/packages-and-namespaces)** | Intermediate | Package initialization with `__init__.py`, `__all__`, cycle elimination | **Available** |
+| **[Executable Scripts & Entry Points](/docs/python/modules/scripts-and-entrypoints)** | Intermediate | `__name__ == '__main__'`, POSIX exit codes, `python -m`, console scripts | **Available** |
+| **[Standard Library Essentials](/docs/python/modules/standard-library)** | Intermediate | `pathlib.Path`, `json`, `csv.DictReader`, timezone-aware `datetime`, `collections` | **Available** |
+| **[Iteration & Functional Utilities](/docs/python/modules/iteration-utilities)** | Intermediate | `itertools` (chain, count, groupby) and `functools` (`lru_cache`, `partial`) | **Available** |
+| **[Command-Line Interfaces with argparse](/docs/python/modules/cli-with-argparse)** | Intermediate | Subparsers, flag groups, type converters, automated `--help` screens | **Available** |
+| **[Subprocess Execution & Security](/docs/python/modules/subprocess-execution)** | Intermediate | Safe process execution, argument lists, timeouts, preventing shell injection | **Available** |
+| **[Virtual Environments & Packaging](/docs/python/modules/environments-and-packaging)** | Intermediate | Isolated `.venv`, `pip`, PEP 621 `pyproject.toml`, wheels & PyPI builds | **Available** |
+
+---
+
+## Track D: Intermediate Language Features
+
+Deeper Python language semantics, execution mechanics, and static typing guarantees.
+
+| Module | Level | Key Concepts | Status |
+|---|---|---|---|
+| **[Comprehensions & Generator Expressions](/docs/python/intermediate/comprehensions)** | Intermediate | List/dict/set comprehensions, bytecode optimizations, streaming with `()` | **Available** |
+| **[Iterators, Generators & Lazy Evaluation](/docs/python/intermediate/iterators-and-generators)** | Intermediate | Iterator protocol (`__iter__`, `__next__`), `yield`, pipelines, `yield from` | **Available** |
+| **[Closures, Scopes & Decorators](/docs/python/intermediate/decorators-and-closures)** | Intermediate | Free variables, `__closure__`, `@wraps`, decorator factories, stacking | **Available** |
+| **[Context Managers & Resource Management](/docs/python/intermediate/context-managers)** | Intermediate | Deterministic cleanup with `with`, `__enter__`/`__exit__`, `contextlib`, `ExitStack` | **Available** |
+| **[Exception Hierarchies & Error Handling](/docs/python/intermediate/exception-handling)** | Intermediate | CPython hierarchy, `try-except-else-finally`, chaining `from`, `ExceptionGroup` | **Available** |
+| **[Type Hints & Static Type Analysis](/docs/python/intermediate/type-hints-and-static-typing)** | Intermediate | PEP 484, union `X | Y`, generic `Protocol`, dataclasses, `mypy` | **Available** |
+
+---
+
+## Track E: Object-Oriented Programming
+
+Robust object architecture, Python's Data Model, cooperative dispatch, and interface design.
+
+| Module | Level | Key Concepts | Status |
+|---|---|---|---|
+| **[Classes, Objects & Attributes](/docs/python/oop/classes-objects-and-attributes)** | Intermediate | `__new__` vs `__init__`, `self` mechanics, namespace dicts, class vs. instance state | **Available** |
+| **[Methods & Object Design](/docs/python/oop/methods-and-object-design)** | Intermediate | `@classmethod` factories, `@staticmethod`, `@property` invariants, composition | **Available** |
+| **[Inheritance & Polymorphism](/docs/python/oop/inheritance-and-polymorphism)** | Intermediate | Dynamic dispatch, cooperative `super()`, multiple inheritance, C3 linearization | **Available** |
+| **[Dunder Methods & Data Model](/docs/python/oop/dunder-methods-and-data-model)** | Intermediate | `__repr__` vs `__str__`, equality & hash contracts, operator overloading | **Available** |
+| **[Dataclasses & Structured Objects](/docs/python/oop/dataclasses-enums-and-structured-objects)** | Intermediate | `@dataclass`, `field(default_factory=...)`, `frozen=True`, `Enum`, `NamedTuple` | **Available** |
+| **[Abstraction & Interface Design](/docs/python/oop/abstraction-and-interfaces)** | Intermediate–Advanced | Nominal `abc.ABC`, `@abstractmethod`, structural `typing.Protocol`, ISP | **Available** |
+| **[Descriptors & Attribute Access](/docs/python/oop/descriptors-and-attribute-access)** | Advanced | Descriptor protocol (`__get__`, `__set__`), lookup precedence, `__slots__` | **Available** |
+| **[Metaclasses & Class Creation](/docs/python/oop/metaclasses-and-class-creation)** | Advanced Reference | `type()` dynamic construction, `metaclass=`, `__init_subclass__` (PEP 487) | **Available** |
+
+---
+
+## Track F: Advanced Python & Runtime Internals
+
+CPython virtual machine mechanics, memory architecture, profiling, and concurrency.
+
+| Module | Level | Key Concepts | Status |
+|---|---|---|---|
+| **[Object Lifecycle & Memory Management](/docs/python/advanced/object-lifecycle-and-memory-management)** | Advanced | Reference counting, cyclic GC (`gc`), `weakref`, `tracemalloc`, copies | **Available** |
+| **[Performance & Profiling](/docs/python/advanced/performance-and-profiling)** | Advanced | Big-O analysis, `timeit`, `perf_counter`, `cProfile`, `pstats`, `lru_cache`, `dis` | **Available** |
+| **[Multithreading & Shared State](/docs/python/advanced/multithreading-and-shared-state)** | Advanced | `ThreadPoolExecutor`, Locks, thread-safe Queues, deadlock avoidance, GIL | **Available** |
+| **[Multiprocessing & Parallel Execution](/docs/python/advanced/multiprocessing-and-parallel-execution)** | Advanced | `ProcessPoolExecutor`, pickle IPC, start methods, `__main__` guard, chunking | **Available** |
+| **[Asynchronous Python with asyncio](/docs/python/advanced/asynchronous-python-with-asyncio)** | Advanced | Coroutines, event loop, `TaskGroup`, timeouts, cancellation, async iteration | **Available** |
+| **[Advanced Runtime Behavior & VM Internals](/docs/python/advanced/advanced-runtime-behavior)** | Advanced | Bytecode, stack frames, `sys.meta_path`, free-threaded PEP 703, C extensions | **Available** |
+| **[Concurrency Patterns & Reliability](/docs/python/advanced/concurrency-patterns-and-reliability)** | Advanced | Bounded queues, backpressure, jittered backoff retries, graceful shutdown | **Available** |
+
+---
+
+## Collection Complexity Cheat Sheet
+
+| Container | Operation | Average Complexity | Worst Case | Notes |
+|---|---|---|---|---|
+| **List** | Index lookup `l[i]` | $O(1)$ | $O(1)$ | Direct pointer offset |
+| **List** | Append `l.append(x)` | $O(1)$ amortized | $O(N)$ | Infrequent dynamic array growth |
+| **List** | Insert/Delete at index 0 | $O(N)$ | $O(N)$ | Must shift all subsequent pointers |
+| **Tuple** | Index lookup `t[i]` | $O(1)$ | $O(1)$ | Fixed-length pointer array |
+| **Dictionary** | Lookup `d[key]` | $O(1)$ | $O(N)$ | Hash table open addressing |
+| **Dictionary** | Insert `d[key] = val` | $O(1)$ | $O(N)$ | Insertion-ordered compact hash table |
+| **Set** | Membership `x in s` | $O(1)$ | $O(N)$ | Hash table membership verification |
+
+---
+
+## Upcoming Curriculum Tracks
+
+The following advanced tracks are scheduled in subsequent content releases:
+
+### Track G: Professional Engineering Practices (Upcoming)
+- Testing with `pytest`, fixtures, parameterization, mocking, and coverage analysis.
+- Code quality toolchains: `Ruff` linter/formatter, static type checking, pre-commit hooks.
+- Architecture patterns, dependency injection, and secure coding practices.
+
+### Track H: Backend Application Engineering (Upcoming)
+- Asynchronous Web APIs with **FastAPI**: Pydantic validation, dependency injection, async route handlers.
+- Production Web Services with **Django**: ORM, migrations, authentication, and security hardening.
+- Relational databases, connection pooling with SQLAlchemy, and PostgreSQL migrations.
+
+---
+
+## Suggested Starting Pathway
+
+1. If you are setting up your workstation, start with **[Getting Started](/docs/python/getting-started)**.
+2. If you want to understand core syntax and data types, read **[Syntax & Primitive Data Types](/docs/python/basics/syntax-and-types)**.
+3. If you want to master Python's memory model, read **[Variables & Assignment](/docs/python/basics/variables)**.
+4. For collection performance and algorithms, dive into **[Lists & Dynamic Arrays](/docs/python/collections/lists)** and **[Dictionaries & Hash Tables](/docs/python/collections/dictionaries)**.

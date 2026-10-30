@@ -1,0 +1,315 @@
+---
+title: Advanced Runtime Behavior & VM Internals
+description: Understand Python implementations, CPython virtual machine architecture, bytecode execution, call frames, import hooks, GIL evolution, and C extensions.
+---
+
+Most developers interact with Python exclusively through high-level syntax. However, understanding what happens underneath—from parsing source text into Abstract Syntax Trees (AST) to generating bytecode, executing frame objects on the CPython virtual machine stack, and interfacing with native C libraries—distinguishes proficient engineers from runtime experts.
+
+This lesson explores how the CPython interpreter executes your code, how namespaces and frames operate in memory, and how to evaluate whether low-level optimizations (such as native extensions) are justified.
+
+## Learning Objectives
+
+By completing this lesson, you will be able to:
+- Contrast the Python language specification with concrete implementations (CPython, PyPy, Jython, RustPython).
+- Trace the compilation pipeline: source code $\to$ tokens $\to$ AST $\to$ bytecode $\to$ evaluation loop.
+- Introspect function objects, code objects (`__code__`), and stack frames (`inspect` and `sys._getframe`).
+- Understand how import machinery hooks (`sys.meta_path`, module caching) function at runtime.
+- Articulate the evolution of the GIL and evaluate the status of experimental free-threaded builds (PEP 703).
+- Understand the architectural trade-offs of native C/Rust extensions (Python/C API, `ctypes`, CFFI).
+- Apply a systematic decision framework to determine when lower-level rewrites are genuinely justified.
+
+## Prerequisites
+
+- [Modules, Namespaces & Imports](/docs/python/modules/modules-and-imports)
+- [Closures, Scopes & Decorators](/docs/python/intermediate/decorators-and-closures)
+- [Classes, Objects & Attributes](/docs/python/oop/classes-objects-and-attributes)
+
+## 1. The Language Specification vs. The CPython Runtime
+
+Python is a **language specification** defined by PEPs and the official Language Reference. **CPython** is the reference implementation, written in C.
+
+| Implementation | Written In | Execution Engine | Primary Advantage |
+|---|---|---|---|
+| **CPython** | C | Stack-based bytecode interpreter | Universal C-extension compatibility, reference standard |
+| **PyPy** | RPython | Bytecode interpreter + Tracing JIT compiler | 2x–10x faster for long-running, pure-Python CPU loops |
+| **Jython** | Java | JVM bytecode | Seamless bidirectional integration with Java libraries |
+| **RustPython** | Rust | Rust-based interpreter | Memory safety, embeddable in Rust applications |
+
+When writing production code, avoid depending on implementation quirks that are unique to CPython (such as relying on immediate reference counting for cleanup rather than explicit context managers).
+
+## 2. The Execution Lifecycle: From Source to Bytecode
+
+When you run `python script.py`, the runtime executes a multi-stage compilation pipeline:
+
+```text
+Source Code (.py)
+       │
+       ▼ Lexer / Tokenizer
+Token Stream
+       │
+       ▼ Parser
+Abstract Syntax Tree (AST)
+       │
+       ▼ Bytecode Compiler
+Code Object (Bytecode instructions stored in .pyc / __pycache__)
+       │
+       ▼ Virtual Machine (ceval.c)
+CPython Evaluation Loop
+```
+
+You can compile source code dynamically and inspect its code object:
+
+```python
+source_code = "total = sum(x * 2 for x in items)"
+code_obj = compile(source_code, filename="<inline>", mode="exec")
+
+print(type(code_obj))          # <class 'code'>
+print(code_obj.co_names)       # ('sum', 'items')
+print(code_obj.co_consts)      # (2, <code object <genexpr>...>)
+```
+
+## 3. Deep Dive into Code Objects and Stack Frames
+
+Every Python function has a `__code__` attribute containing immutable compiled bytecode and metadata:
+
+```python
+def calculate_area(length: float, width: float) -> float:
+    label = "Rectangle"
+    return length * width
+
+code = calculate_area.__code__
+print("Arguments:", code.co_varnames[:code.co_argcount])  # ('length', 'width')
+print("Local variables:", code.co_varnames)                # ('length', 'width', 'label')
+print("Bytecode size in bytes:", len(code.co_code))       # Length of raw opcode bytes
+```
+
+### Stack Frames (`sys._getframe`)
+When a function is called, CPython creates a **frame object** on the execution stack. The frame contains:
+- The code object being executed.
+- Fast local variable storage (`f_locals`).
+- Global namespace dictionary (`f_globals`).
+- Pointer to the caller's frame (`f_back`).
+
+```python
+import sys
+
+def outer():
+    x = 100
+    inner()
+
+def inner():
+    # Introspect caller's stack frame:
+    caller_frame = sys._getframe(1)
+    print("Called from function:", caller_frame.f_code.co_name)
+    print("Caller local variables:", caller_frame.f_locals)
+
+outer()
+```
+
+Output:
+```text
+Called from function: outer
+Caller local variables: {'x': 100}
+```
+
+<Callout type="warning" title="Inspect Frames with Restraint">
+Stack frame introspection via `sys._getframe` or the `inspect` module is an invaluable diagnostic and debugging tool (used by frameworks like Pytest and Sentry). However, modifying `f_locals` directly is unsupported and violates language guarantees.
+</Callout>
+
+## 4. Import Machinery and `sys.meta_path`
+
+How does `import math` actually locate, load, and execute code?
+
+Python's import system (PEP 302, PEP 451) uses **finders** and **loaders** registered in `sys.meta_path`:
+
+```python
+import sys
+
+print("Registered Meta Path Finders:")
+for finder in sys.meta_path:
+    print(" -", finder)
+```
+
+1. **`sys.modules` check**: If the module name exists in `sys.modules`, Python returns the cached module object immediately ($O(1)$).
+2. **Finder traversal**: If not cached, Python iterates through `sys.meta_path` until a finder returns a `ModuleSpec`.
+3. **Module creation & execution**: The loader allocates the module object, populates its `__dict__`, and executes the module body.
+
+You can intercept imports by appending custom finders to `sys.meta_path` (used by virtual environment managers and encrypted code loaders).
+
+## 5. The Evolution of the GIL: CPython 3.12, 3.13 and Beyond
+
+In CPython, the Global Interpreter Lock protects interpreter internal structures. Over recent years, major engineering efforts have modernized CPython's execution engine:
+
+- **Python 3.11–3.12 (Faster CPython / Specializing Adaptive Interpreter)**: Bytecode instructions adapt dynamically at runtime. For example, a generic `BINARY_OP` instruction specializes into `BINARY_OP_ADD_INT` when it observes only integers at a call site, bypassing generic type dispatch overhead.
+- **Python 3.13+ (PEP 703 - Free-Threaded CPython)**: Introduces an experimental build option (`--disable-gil`). It replaces the single GIL with:
+  - **Biased Reference Counting**: Fast local thread counters.
+  - **Thread-safe mimalloc allocator**: Isolated per-thread memory heaps.
+  - **Thread-safe collection mutations**: Internal lock striping.
+
+<Callout type="note" title="Free-Threading is an Optional Build, Not a Universal Guarantee">
+Free-threaded CPython is an experimental build variant in Python 3.13+. Most standard Linux distributions, cloud container runtimes, and PyPI binary wheels still target the default GIL-enabled runtime. Do not architect systems assuming free-threading is universally available across all deployment environments.
+</Callout>
+
+## 6. Native Extensions and the Python/C Boundary
+
+When pure Python code remains too slow even after algorithmic optimization, developers turn to **native extensions**:
+
+1. **`ctypes` / `cffi`**: Call compiled dynamic libraries (`.so`, `.dylib`, `.dll`) directly from Python without compiling C extensions.
+2. **Cython**: A superset of Python that compiles to native C code with optional static type declarations.
+3. **PyO3 (Rust)**: Write high-performance native extensions in memory-safe Rust with ergonomic Python bindings.
+4. **Python/C API**: Direct C extension development using `<Python.h>`.
+
+### The Overhead of the Python/C Boundary
+Calling a native C function is not free. Every call crosses the boundary between Python objects and C memory:
+- Unpacking Python integer/float objects into native C types (`int`, `double`).
+- Performing the computation in C.
+- Allocating a brand-new Python object to wrap the result.
+
+If a C function only performs a 2-nanosecond addition, the marshaling overhead can make it *slower* than running in pure Python! Native extensions are only beneficial when you pass large arrays or execute substantial algorithmic loops inside the native code.
+
+## 7. The Performance Decision Framework
+
+Before rewriting code in a lower-level language or adding native extensions, follow this hierarchy:
+
+```text
+Performance Optimization Hierarchy:
+1. Algorithmic Redesign (e.g. O(N^2) -> O(N log N)) ─── Highest impact (100x - 10,000x)
+2. Data Structure Tuning (e.g. List -> Set / Deque) ─── High impact (10x - 100x)
+3. Caching / Memoization (@lru_cache) ──────────────── Highly effective for pure paths
+4. Built-in C Acceleration (itertools, map, join) ───── Modest speedup (2x - 5x)
+5. Multi-Core Scaling (ProcessPoolExecutor) ────────── Near-linear CPU scaling
+6. Native C/Rust Extensions (PyO3, Cython) ─────────── Last resort for numerical hot loops
+```
+
+## Practical Example: Custom Runtime AST Inspector
+
+Here is a tool that parses Python source text into an Abstract Syntax Tree (AST) to detect dangerous function calls (such as `eval` or `exec`) before execution:
+
+```python
+import ast
+
+class SecurityAuditVisitor(ast.NodeVisitor):
+    def __init__(self):
+        self.violations = []
+
+    def visit_Call(self, node: ast.Call):
+        if isinstance(node.func, ast.Name):
+            if node.func.id in ("eval", "exec"):
+                self.violations.append(
+                    f"Forbidden dynamic execution: '{node.func.id}' at line {node.lineno}"
+                )
+        self.generic_visit(node)
+
+def audit_code(source: str) -> list[str]:
+    tree = ast.parse(source)
+    visitor = SecurityAuditVisitor()
+    visitor.visit(tree)
+    return visitor.violations
+
+# Verification:
+safe_code = "x = sum([1, 2, 3])"
+risky_code = """
+def run_user_input(payload):
+    result = eval(payload)
+    return result
+"""
+
+assert len(audit_code(safe_code)) == 0
+violations = audit_code(risky_code)
+print("Violations detected:", violations)
+assert len(violations) == 1
+```
+
+## Common Mistakes & Anti-Patterns
+
+### 1. Assuming PyPy Runs All Code Faster
+While PyPy accelerates pure Python mathematical and algorithmic loops, code that relies heavily on C extensions (like NumPy, Pandas, or PyTorch) often runs *slower* on PyPy due to the overhead of emulating CPython's C-API (`cpyext`). Always test real workloads on the target runtime.
+
+### 2. Monkey-Patching Built-in Types
+In CPython, built-in types (like `int`, `str`, `list`, `dict`) are implemented in immutable C structures. Attempting to add methods to them (`int.custom = lambda self: ...`) raises `TypeError: can't set attributes on built-in/extension type 'int'`. Subclass the type instead.
+
+## Practice Exercises
+
+### Exercise 1: Function Argument Introspection
+Write a function `inspect_signature_counts(fn)` that reads `fn.__code__` attributes and returns a dictionary with:
+- `"arg_count"`: Total positional argument count.
+- `"pos_only_count"`: Positional-only parameter count.
+- `"kw_only_count"`: Keyword-only parameter count.
+- `"local_var_count"`: Total number of local variables allocated.
+
+### Exercise 2: AST Function Call Counter
+Using Python's `ast` module, write a helper `count_function_calls(source: str) -> dict[str, int]` that returns a frequency count of every function invoked in the source string.
+
+## Exercise Solutions & Reasoning
+
+```python
+# Solution 1
+def inspect_signature_counts(fn) -> dict[str, int]:
+    code = fn.__code__
+    return {
+        "arg_count": code.co_argcount,
+        "pos_only_count": code.co_posonlyargcount,
+        "kw_only_count": code.co_kwonlyargcount,
+        "local_var_count": len(code.co_varnames),
+    }
+
+def sample_fn(a, b, /, c, *, d=10):
+    temp = a + b
+    return temp * c
+
+info = inspect_signature_counts(sample_fn)
+assert info["arg_count"] == 3        # a, b, c
+assert info["pos_only_count"] == 2   # a, b
+assert info["kw_only_count"] == 1    # d
+
+# Solution 2
+import ast
+from collections import Counter
+
+class CallCounterVisitor(ast.NodeVisitor):
+    def __init__(self):
+        self.calls = Counter()
+
+    def visit_Call(self, node: ast.Call):
+        if isinstance(node.func, ast.Name):
+            self.calls[node.func.id] += 1
+        elif isinstance(node.func, ast.Attribute):
+            self.calls[node.func.attr] += 1
+        self.generic_visit(node)
+
+def count_function_calls(source: str) -> dict[str, int]:
+    tree = ast.parse(source)
+    visitor = CallCounterVisitor()
+    visitor.visit(tree)
+    return dict(visitor.calls)
+
+code_snippet = """
+print("hello")
+items = [1, 2, 3]
+len(items)
+print("done")
+"""
+counts = count_function_calls(code_snippet)
+assert counts["print"] == 2
+assert counts["len"] == 1
+```
+
+## Summary
+
+- CPython is the standard reference implementation, compiling source code to bytecode executed on a virtual machine stack.
+- Functions contain immutable `__code__` objects with variable names, constants, and raw opcodes.
+- When invoked, functions allocate frame objects on the execution stack tracking local scopes.
+- Python imports use `sys.meta_path` finders and loaders, caching results in `sys.modules`.
+- The GIL protects CPython memory management; experimental free-threaded builds exist in 3.13+ but are not universal.
+- Crossing the Python/C boundary incurs marshaling overhead; only offload substantial computations to native C/Rust code.
+
+## Official Documentation References
+
+- [Python Execution Model](https://docs.python.org/3/reference/executionmodel.html)
+- [`inspect` — Inspect live objects](https://docs.python.org/3/library/inspect.html)
+- [`ast` — Abstract Syntax Trees](https://docs.python.org/3/library/ast.html)
+- [The Import System Specification](https://docs.python.org/3/reference/import.html)
+
+## Next Step
+
+Synthesize threads, processes, and async into resilient distributed architectures in [Concurrency Patterns & Reliability](/docs/python/advanced/concurrency-patterns-and-reliability).

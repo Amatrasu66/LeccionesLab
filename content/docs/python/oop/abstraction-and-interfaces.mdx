@@ -1,0 +1,61 @@
+---
+title: Abstraction & Interface Design
+description: Design robust architectural contracts using Abstract Base Classes (abc.ABC, @abstractmethod), structural subtyping with typing.Protocol, and runtime verification tradeoffs.
+---
+
+In software architecture, **abstraction** separates *what* an operation does from *how* it is executed. Python provides two distinct, complementary mechanisms for interface definition:
+1. **Nominal Subtyping via `abc.ABC` and `@abstractmethod`**: Explicit inheritance contracts checked at runtime instantiation.
+2. **Structural Subtyping via `typing.Protocol`**: Implicit, shape-based contracts (static duck typing) verified by static type checkers.
+
+## Learning Objectives
+
+By completing this lesson, you will be able to:
+- Define nominal interface contracts using `abc.ABC` and `@abstractmethod`.
+- Combine `@abstractmethod` with `@property` and `@classmethod`.
+- Implement structural subtyping contracts with `typing.Protocol`.
+- Choose between nominal ABCs and structural Protocols.
+
+## 1. Nominal Abstraction with `abc.ABC`
+
+```python
+from abc import ABC, abstractmethod
+
+class DatabaseDriver(ABC):
+    @abstractmethod
+    def connect(self) -> None:
+        pass
+
+    @abstractmethod
+    def query(self, sql: str) -> list[dict]:
+        pass
+```
+
+Instantiating `DatabaseDriver` directly or creating a subclass missing an abstract method raises `TypeError`.
+
+## 2. Structural Abstraction with `typing.Protocol`
+
+```python
+from typing import Protocol
+
+class LogWriter(Protocol):
+    def write(self, message: str) -> None: ...
+
+class ConsoleLogger:
+    def write(self, message: str) -> None:
+        print(f"[LOG] {message}")
+
+def log_event(logger: LogWriter, msg: str):
+    logger.write(msg)
+
+log_event(ConsoleLogger(), "System online")
+```
+
+## Summary
+
+- `abc.ABC` and `@abstractmethod` enforce nominal contracts at instantiation time.
+- `typing.Protocol` enables structural subtyping (static duck typing) without explicit inheritance.
+- Prefer Protocols for external consumer boundaries and ABCs for internal template methods.
+
+## Next Step
+
+Explore how Python handles attribute lookup, data descriptors, and low-level property mechanics in [Descriptors & Attribute Access](/docs/python/oop/descriptors-and-attribute-access).

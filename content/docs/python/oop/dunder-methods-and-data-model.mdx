@@ -1,0 +1,65 @@
+---
+title: Dunder Methods & Python's Data Model
+description: Unleash Python's data model by implementing special methods for string representation, equality, ordering, hashing, indexing, containment, and arithmetic operator overloading.
+---
+
+Special double-underscore methods—known as **dunder methods**—define the **Python Data Model**. By implementing them on custom classes, your types behave seamlessly with Python's built-in syntax.
+
+## Learning Objectives
+
+By completing this lesson, you will be able to:
+- Distinguish developer-facing `__repr__` and user-facing `__str__`.
+- Implement rich comparisons (`__eq__`, `__lt__`, `@functools.total_ordering`).
+- Maintain the strict contract between `__hash__` and `__eq__`.
+- Build container interfaces using `__len__`, `__getitem__`, and `__contains__`.
+- Implement arithmetic operator overloading (`__add__`, `__mul__`, `__radd__`).
+
+## 1. `__repr__` vs. `__str__`
+
+```python
+class Currency:
+    def __init__(self, amount: float, code: str = "USD"):
+        self.amount = amount
+        self.code = code
+
+    def __repr__(self) -> str:
+        return f"Currency(amount={self.amount!r}, code={self.code!r})"
+
+    def __str__(self) -> str:
+        return f"${self.amount:,.2f} {self.code}"
+```
+
+## 2. Equality, Ordering, and the Hash Contract
+
+```python
+from functools import total_ordering
+
+@total_ordering
+class Point:
+    def __init__(self, x: int, y: int):
+        self.x = x
+        self.y = y
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, Point):
+            return NotImplemented
+        return (self.x, self.y) == (other.x, other.y)
+
+    def __lt__(self, other: object) -> bool:
+        if not isinstance(other, Point):
+            return NotImplemented
+        return (self.x, self.y) < (other.x, other.y)
+
+    def __hash__(self) -> int:
+        return hash((self.x, self.y))
+```
+
+## Summary
+
+- `__repr__` is for developers; `__str__` is for users.
+- If `a == b`, then `hash(a) == hash(b)` must hold true.
+- Overload operators with `__add__`, `__sub__`, and reflected `__radd__`.
+
+## Next Step
+
+Simplify stateful record classes and type-safe enumerations in [Dataclasses, Enums & Structured Objects](/docs/python/oop/dataclasses-enums-and-structured-objects).

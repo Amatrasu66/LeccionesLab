@@ -1,0 +1,232 @@
+---
+title: Virtual Environments, pip & Modern Packaging
+description: Complete guide to hermetic virtual environments with venv, dependency management, requirements.txt, pyproject.toml specifications, and packaging for PyPI.
+---
+
+Professional Python development requires strictly isolating project dependencies. Installing packages globally with `sudo pip install` pollutes your operating system's base environment, risks breaking system utilities, and makes reproducible deployments impossible.
+
+The modern Python ecosystem relies on **virtual environments** (`venv`), standard package indices (PyPI), and declarative packaging standards centered around **`pyproject.toml`** (PEP 517/518/621).
+
+## Learning Objectives
+
+By completing this lesson, you will be able to:
+- Explain why virtual environment isolation is mandatory in Python.
+- Create, activate, and deactivate hermetic virtual environments using `venv`.
+- Install, upgrade, and pin third-party packages with `pip`.
+- Distinguish between application dependency locking and reusable library specifications.
+- Structure a modern Python project using the recommended `src/` layout.
+- Author a PEP 621-compliant `pyproject.toml` file with dependencies and console script entrypoints.
+- Build standard source distributions (`.tar.gz`) and binary wheels (`.whl`) for distribution.
+
+## Prerequisites
+
+- [Modules, Namespaces & Import Machinery](/docs/python/modules/modules-and-imports)
+- [Executable Scripts & Entry Points](/docs/python/modules/scripts-and-entrypoints)
+
+## 1. Virtual Environments with `venv`
+
+A virtual environment is a lightweight, isolated directory containing a dedicated Python interpreter binary, standard library symlinks, and a private `site-packages` directory.
+
+### Creating and Activating an Environment
+
+```bash
+# 1. Create a virtual environment named '.venv'
+python3 -m venv .venv
+
+# 2. Activate the environment (macOS / Linux)
+source .venv/bin/activate
+
+# Or on Windows (PowerShell):
+# .venv\Scripts\Activate.ps1
+
+# 3. Verify the active interpreter points inside .venv
+which python
+# -> /path/to/project/.venv/bin/python
+```
+
+When activated, your shell prompt changes to `(.venv)` and any `pip install` command places packages inside `.venv/lib/python3.x/site-packages/`, keeping your global environment pristine.
+
+To exit:
+```bash
+deactivate
+```
+
+## 2. Managing Dependencies with `pip`
+
+`pip` is Python's standard package installer, fetching open-source libraries from the Python Package Index ([PyPI](https://pypi.org)).
+
+```bash
+# Install a package
+pip install httpx
+
+# Install an exact pinned version
+pip install "fastapi==0.110.0"
+
+# Install with version constraints
+pip install "pydantic>=2.0,<3.0"
+
+# Upgrade a package
+pip install --upgrade httpx
+```
+
+### Freezing Dependencies
+For deployment reproducibility in web applications or microservices, export exact pinned versions:
+```bash
+pip freeze > requirements.txt
+```
+To install all requirements on a new server or CI runner:
+```bash
+pip install -r requirements.txt
+```
+
+## 3. Recommended Project Structure: The `src/` Layout
+
+The Python Packaging Authority (PyPA) strongly recommends the **`src/` layout** over flat structures. Placing package code in `src/` guarantees that tests run against the installed package rather than accidentally importing unbuilt local source files.
+
+```text
+my-awesome-package/
+├── src/
+│   └── my_package/
+│       ├── __init__.py
+│       ├── core.py
+│       └── utils.py
+├── tests/
+│   ├── __init__.py
+│   └── test_core.py
+├── .gitignore
+├── pyproject.toml       # Single source of truth for build & metadata
+└── README.md
+```
+
+## 4. Modern Packaging with `pyproject.toml`
+
+Historically, Python packaging relied on imperative `setup.py` scripts. Today, **`pyproject.toml`** provides a standardized, declarative configuration for builds, dependencies, and tools.
+
+Here is a production-ready `pyproject.toml` example:
+
+```toml
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "data-harvester"
+version = "1.0.0"
+description = "High-throughput asynchronous ETL pipeline"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [
+    { name = "Ada Lovelace", email = "ada@example.com" }
+]
+dependencies = [
+    "httpx>=0.25.0",
+    "pydantic>=2.5.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "mypy>=1.9.0",
+    "ruff>=0.3.0",
+]
+
+[project.scripts]
+harvester = "data_harvester.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/example/data-harvester"
+Documentation = "https://example.com/docs"
+```
+
+## 5. Building and Distributing Packages
+
+To distribute your package to PyPI or internal registries, use the standard PyPA `build` frontend:
+
+```bash
+# 1. Install build tool in your venv
+pip install build
+
+# 2. Build both source distribution (sdist) and binary wheel (wheel)
+python -m build
+```
+
+This generates distribution artifacts in `dist/`:
+- `data_harvester-1.0.0.tar.gz` (Source distribution)
+- `data_harvester-1.0.0-py3-none-any.whl` (Optimized pre-built wheel)
+
+You can publish artifacts to TestPyPI or PyPI securely using `twine` or GitHub Actions OIDC Trusted Publishers:
+```bash
+pip install twine
+twine check dist/*
+# twine upload dist/*
+```
+
+## Common Mistakes & Anti-Patterns
+
+### Mistake 1: Committing Virtual Environment Folders (`.venv`) to Git
+Never commit `.venv/` or `venv/` to source control! Virtual environments contain architecture-specific binaries and symlinks.
+Always add `.venv` to your `.gitignore`.
+
+### Mistake 2: Mixing Application Pinning with Library Constraints
+- **Applications (APIs, CLIs, Services)**: Pin exact versions (`foo==1.2.3`) to prevent breaking changes in production.
+- **Libraries (intended for PyPI)**: Specify compatible ranges (`foo>=1.2,<2.0`) so downstream users can resolve dependencies without conflicts.
+
+## Practice Exercises
+
+### Exercise 1: Requirements Parser
+Write a function `parse_requirements(req_text: str) -> dict[str, str]` that takes the content of a `requirements.txt` file, ignores empty lines and comments (`#`), and returns a dictionary mapping package names to their version specifiers (e.g. `"fastapi==0.100.0"` -> `{"fastapi": "==0.100.0"}`).
+
+### Exercise 2: SemVer Compatibility Checker
+Write a function `is_semver_compatible(installed_version: str, constraint: str) -> bool` that verifies if an installed `X.Y.Z` version meets a simple `>=X.Y` constraint.
+
+## Exercise Solutions
+
+```python
+import re
+
+# Solution 1:
+def parse_requirements(req_text: str) -> dict[str, str]:
+    result = {}
+    for line in req_text.splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        # Split on operator: ==, >=, <=, ~=, <, >
+        match = re.match(r"^([a-zA-Z0-9_\-\.]+)\s*([=><~].+)?$", line)
+        if match:
+            pkg = match.group(1).lower()
+            spec = match.group(2) or "*"
+            result[pkg] = spec.strip()
+    return result
+
+sample_reqs = """
+# Production requirements
+FastAPI==0.110.0
+httpx>=0.25.0
+pydantic
+"""
+print(parse_requirements(sample_reqs))
+# -> {'fastapi': '==0.110.0', 'httpx': '>=0.25.0', 'pydantic': '*'}
+
+# Solution 2:
+def is_semver_compatible(installed: str, min_version: str) -> bool:
+    def parse_v(v):
+        return tuple(int(x) for x in v.split("."))
+    return parse_v(installed) >= parse_v(min_version)
+
+print(is_semver_compatible("3.11.2", "3.10"))  # -> True
+print(is_semver_compatible("3.9.5", "3.10"))   # -> False
+```
+
+## Summary
+
+- Never install packages into global system Python; always activate a `.venv`.
+- Use `requirements.txt` for pinning reproducible application builds.
+- Use `pyproject.toml` (PEP 621) as the unified configuration file for projects, tools, and package metadata.
+- Structure packages using the `src/` layout to enforce clean boundaries during testing.
+- Build distributions using `python -m build` into wheels and sdists.
+
+## Next Step
+
+Begin mastering intermediate language features starting with [Comprehensions & Generator Expressions](/docs/python/intermediate/comprehensions).

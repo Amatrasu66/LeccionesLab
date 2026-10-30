@@ -1,0 +1,80 @@
+---
+title: Inheritance & Polymorphism
+description: Deep dive into class hierarchies, method overriding, super() cooperative calls, polymorphism, multiple inheritance, C3 linearization, and the diamond problem.
+---
+
+Inheritance is one of the foundational pillars of object-oriented programming. It allows a class to derive state and behavior from a base class, establishing an "Is-A" semantic relationship.
+
+In Python, inheritance supports **multiple inheritance**, governed by **C3 Linearization**, and utilizes `super()` to cooperatively traverse the **Method Resolution Order (MRO)**.
+
+## Learning Objectives
+
+By completing this lesson, you will be able to:
+- Establish class hierarchies using base classes and subclasses.
+- Override methods safely while maintaining the Liskov Substitution Principle.
+- Master the mechanics of `super()` in cooperative multiple inheritance contexts.
+- Leverage polymorphism and duck typing to write extensible code.
+- Analyze multiple inheritance graphs and resolve the diamond problem with C3 Linearization.
+
+## Prerequisites
+
+- [Classes, Objects & Attributes](/docs/python/oop/classes-objects-and-attributes)
+- [Methods & Object Design](/docs/python/oop/methods-and-object-design)
+
+## 1. Subclassing and Method Overriding
+
+```python
+class Employee:
+    def __init__(self, name: str, base_salary: float):
+        self.name = name
+        self.base_salary = base_salary
+
+    def calculate_pay(self) -> float:
+        return self.base_salary
+
+class CommissionWorker(Employee):
+    def __init__(self, name: str, base_salary: float, commission: float):
+        super().__init__(name, base_salary)
+        self.commission = commission
+
+    def calculate_pay(self) -> float:
+        return self.base_salary + self.commission
+```
+
+## 2. Cooperative `super()` and MRO
+
+```python
+class Base:
+    def __init__(self):
+        print("Base")
+
+class MixinA(Base):
+    def __init__(self):
+        print("MixinA enter")
+        super().__init__()
+        print("MixinA exit")
+
+class MixinB(Base):
+    def __init__(self):
+        print("MixinB enter")
+        super().__init__()
+        print("MixinB exit")
+
+class Combined(MixinA, MixinB):
+    def __init__(self):
+        print("Combined enter")
+        super().__init__()
+        print("Combined exit")
+```
+
+`Combined()` invokes `MixinA` $\to$ `MixinB` $\to$ `Base` following C3 Linearization order (`Combined.mro()`).
+
+## Summary
+
+- Subclasses inherit attributes and methods, overriding them dynamically.
+- `super()` navigates the Method Resolution Order (MRO) cooperatively.
+- C3 Linearization resolves multiple inheritance hierarchies predictably.
+
+## Next Step
+
+Discover how Python's data model powers operator overloading in [Dunder Methods & Python's Data Model](/docs/python/oop/dunder-methods-and-data-model).

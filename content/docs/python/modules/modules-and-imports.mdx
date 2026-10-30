@@ -1,0 +1,219 @@
+---
+title: Modules, Namespaces & Import Machinery
+description: Deep dive into Python module creation, namespaces, import semantics, sys.modules singleton caching, and sys.path resolution algorithms.
+---
+
+A Python module is a single file containing executable statements and definitions (functions, classes, variables) ending in `.py`. Modules enable code modularity, encapsulation, and code reuse across programs.
+
+Understanding the internal import machinery—how Python finds, compiles, and caches modules—is fundamental to architecting robust, scalable software and preventing subtle bugs like circular dependencies or shadowed standard libraries.
+
+## Learning Objectives
+
+By completing this lesson, you will be able to:
+- Explain what happens under the hood when Python executes an `import` statement.
+- Distinguish between `import module`, `from module import name`, and aliasing with `as`.
+- Inspect and manipulate Python's module cache in `sys.modules`.
+- Understand the resolution order of `sys.path` and configure `PYTHONPATH`.
+- Use `dir()`, `__file__`, `__doc__`, and `__name__` to introspect imported modules.
+- Avoid the performance and maintenance hazards of wildcard imports (`from module import *`).
+
+## Prerequisites
+
+- [Functions & Scope](/docs/python/basics/functions)
+- [Dictionaries & Hash Tables](/docs/python/collections/dictionaries)
+
+## 1. What Happens During an Import
+
+When Python runs `import math`, it performs three distinct steps:
+
+1. **Search**: Searches for the module `math` across the directories listed in `sys.path`.
+2. **Compile & Execute**: If the module has not been loaded yet, Python reads the source code, compiles it into bytecode (`.pyc`), and executes the module's top-level code inside a new, isolated namespace dictionary (`module.__dict__`).
+3. **Bind**: Binds the resulting module object to a name in the current local or global scope.
+
+```python
+import sys
+import math
+
+# sys.modules is a dictionary caching all loaded module objects
+print("math" in sys.modules)       # -> True
+print(type(sys.modules["math"]))   # -> <class 'module'>
+print(math.pi)                     # -> 3.141592653589793
+```
+
+Because modules are cached in `sys.modules`, subsequent imports of the same module in any file across the same Python process simply return the cached object instantly ($O(1)$ dictionary lookup), without re-executing top-level code.
+
+## 2. Import Syntax Variants
+
+Python provides several ways to import definitions:
+
+### A. Direct Module Import
+```python
+import math
+
+# Requires prefixing with the module namespace
+result = math.sqrt(64)
+print(result)  # -> 8.0
+```
+*Best practice for clarity, preventing name collisions.*
+
+### B. Specific Symbol Import
+```python
+from math import sqrt, ceil, pi
+
+# Direct access in current namespace
+print(sqrt(49))  # -> 7.0
+print(ceil(3.2)) # -> 4
+print(pi)        # -> 3.141592653589793
+```
+
+### C. Aliasing with `as`
+```python
+import datetime as dt
+from collections import defaultdict as ddict
+
+now = dt.datetime.now()
+counts = ddict(int)
+```
+*Useful to avoid name collisions or shorten widely used library names (e.g., `import numpy as np`).*
+
+### D. The Danger of Wildcard Imports (`from module import *`)
+Wildcard imports pollute the local namespace, obscure where names were defined, break static analysis tools (`mypy`, linters), and risk accidental variable overwriting.
+
+```python
+# ❌ ANTI-PATTERN:
+from math import *
+# What does 'sin' come from? Is it math.sin or our custom function?
+```
+
+## 3. Module Resolution Order: `sys.path`
+
+When searching for a module or package, Python traverses `sys.path` in exact sequential order:
+
+1. **Current Directory**: The directory of the input script being run, or current working directory in interactive mode.
+2. **`PYTHONPATH`**: Directory paths set in the environment variable `PYTHONPATH`.
+3. **Standard Library**: Built-in and standard library directory locations (e.g., `/usr/lib/python3.x`).
+4. **Site-Packages**: Third-party packages installed via `pip` (e.g., in a virtual environment).
+
+```python
+import sys
+
+print("Python module search paths:")
+for i, path in enumerate(sys.path):
+    print(f"[{i}] {path}")
+```
+
+### Dynamic Path Modification
+You can inspect or temporarily append paths at runtime:
+
+```python
+import sys
+from pathlib import Path
+
+custom_lib = Path(__file__).resolve().parent / "libs"
+if str(custom_lib) not in sys.path:
+    sys.path.append(str(custom_lib))
+```
+
+## 4. Module Introspection
+
+Modules are first-class Python objects. You can inspect their attributes:
+
+```python
+import json
+
+print(json.__name__)   # -> 'json'
+print(json.__file__)   # -> '/.../lib/python3.x/json/__init__.py'
+print(json.__doc__[:40])  # -> 'JSON (JavaScript Object Notation)...'
+
+# dir() lists all symbols defined in the module namespace
+public_symbols = [s for s in dir(json) if not s.startsWith("_")]
+print(public_symbols)  # -> ['dump', 'dumps', 'load', 'loads', ...]
+```
+
+## Common Mistakes & Anti-Patterns
+
+### Mistake 1: Shadowing Standard Library Names
+Naming your own script `math.py`, `random.py`, `json.py`, or `test.py` in your working directory causes Python to load your file instead of the standard library module:
+
+```text
+# Directory structure:
+# my_project/
+#   ├── random.py   <-- SHADOWS standard library!
+#   └── app.py
+```
+When `app.py` runs `import random`, it imports your `random.py` which lacks `random.randint`, resulting in:
+`AttributeError: module 'random' has no attribute 'randint'`.
+
+### Mistake 2: Relying on Side Effects During Import
+Avoid heavy I/O, network requests, or database connections at top-level module scope:
+```python
+# ❌ Anti-pattern: Connecting to a database at import time
+import db_driver
+connection = db_driver.connect("prod-db") # Runs as soon as module is imported!
+
+# ✅ Best practice: Encapsulate into an initializer function
+def get_db_connection():
+    return db_driver.connect("prod-db")
+```
+
+## Practice Exercises
+
+### Exercise 1: Module Inspector
+Write a function `inspect_module(module_obj)` that takes a module object and returns a dictionary with keys `'name'`, `'file'`, `'function_count'`, and `'class_count'` using the `inspect` standard module or `dir()`.
+
+### Exercise 2: Safe Importer
+Write a function `safe_import(module_name: str, fallback_value=None)` that attempts to import a module dynamically using `importlib.import_module`. If the module is not found (`ModuleNotFoundError`), return `fallback_value`.
+
+## Exercise Solutions
+
+```python
+import importlib
+import inspect
+import types
+
+# Solution 1:
+def inspect_module(module_obj: types.ModuleType) -> dict:
+    functions = []
+    classes = []
+    for attr_name in dir(module_obj):
+        if attr_name.startswith("_"):
+            continue
+        val = getattr(module_obj, attr_name)
+        if inspect.isfunction(val) or inspect.isbuiltin(val):
+            functions.append(attr_name)
+        elif inspect.isclass(val):
+            classes.append(attr_name)
+            
+    return {
+        "name": getattr(module_obj, "__name__", "unknown"),
+        "file": getattr(module_obj, "__file__", "built-in"),
+        "function_count": len(functions),
+        "class_count": len(classes),
+    }
+
+# Solution 2:
+def safe_import(module_name: str, fallback_value=None):
+    try:
+        return importlib.import_module(module_name)
+    except ModuleNotFoundError:
+        return fallback_value
+
+# Verification:
+import math
+print(inspect_module(math))
+# -> {'name': 'math', 'file': 'built-in', 'function_count': ..., 'class_count': ...}
+
+mod = safe_import("non_existent_module_xyz", "DefaultFallback")
+print(mod)  # -> 'DefaultFallback'
+```
+
+## Summary
+
+- Modules are single `.py` files executed once upon initial import and cached in `sys.modules`.
+- `sys.path` defines the prioritized search order for module resolution.
+- Prefer explicit imports (`import math` or `from math import sqrt`) over wildcard imports (`from math import *`).
+- Never name local files after standard library modules to avoid shadowing.
+
+## Next Step
+
+Learn how to structure complex applications into hierarchical directories in [Packages, Organization & Circular Imports](/docs/python/modules/packages-and-namespaces).

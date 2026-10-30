@@ -1,0 +1,98 @@
+---
+title: Functions & Scope
+description: Master function definitions, argument unpacking with *args and **kwargs, the LEGB scope hierarchy, and closures.
+---
+
+Functions are the primary unit of code organization in Python. In Python, functions are **first-class citizens**: they can be passed as arguments, assigned to variables, returned from other functions, and stored in collections.
+
+## Function Syntax and Signatures
+
+A function is declared using the `def` keyword, followed by the function name, parameters, and an optional type signature:
+
+```python
+def format_greeting(name: str, uppercase: bool = False) -> str:
+    """Return a formatted greeting message."""
+    greeting = f"Hello, {name}!"
+    return greeting.upper() if uppercase else greeting
+
+print(format_greeting("Developer"))  # -> Hello, Developer!
+print(format_greeting("Engineer", uppercase=True))  # -> HELLO, ENGINEER!
+```
+
+## Argument Unpacking: *args and **kwargs
+
+Python enables flexible function signatures using positional and keyword unpacking:
+
+- `*args`: Collects excess positional arguments into a tuple.
+- `**kwargs`: Collects excess keyword arguments into a dictionary.
+
+```python
+def log_event(event_name: str, *tags: str, **metadata: any) -> None:
+    print(f"Event: {event_name}")
+    print(f"Tags tuple: {tags}")
+    print(f"Metadata dict: {metadata}")
+
+log_event(
+    "deploy_success",
+    "prod", "v1.4",
+    cluster="asia-southeast1",
+    latency_ms=42
+)
+# Output:
+# Event: deploy_success
+# Tags tuple: ('prod', 'v1.4')
+# Metadata dict: {'cluster': 'asia-southeast1', 'latency_ms': 42}
+```
+
+## The LEGB Scope Hierarchy
+
+When Python resolves an identifier (variable name), it searches namespaces in this strict order:
+
+1. **L**ocal: Inside the currently executing function.
+2. **E**nclosing: In any enclosing function scopes (closures).
+3. **G**lobal: At the top level of the current module file.
+4. **B**uilt-in: In Python's built-in namespace (`print`, `len`, `ValueError`, etc.).
+
+```python
+global_val = "I am global"
+
+def outer():
+    enclosing_val = "I am enclosing"
+
+    def inner():
+        local_val = "I am local"
+        # Can access all enclosing and global variables
+        print(f"{local_val} | {enclosing_val} | {global_val}")
+
+    inner()
+
+outer()
+```
+
+## Critical Trap: Mutable Default Arguments
+
+Default argument values are evaluated **once when the function definition is executed**, not every time the function is called.
+
+```python
+# ❌ INCORRECT: The default list is shared across all invocations!
+def append_item(item: int, target_list: list = []) -> list:
+    target_list.append(item)
+    return target_list
+
+print(append_item(1))  # -> [1]
+print(append_item(2))  # -> [1, 2] (Surprise: 1 is retained!)
+
+# ✅ CORRECT: Use None as default sentinel and instantiate inside
+def append_item_clean(item: int, target_list: list | None = None) -> list:
+    if target_list is None:
+        target_list = []
+    target_list.append(item)
+    return target_list
+
+print(append_item_clean(1))  # -> [1]
+print(append_item_clean(2))  # -> [2]
+```
+
+## Technical Reference
+
+Now that you understand functions, explore Python's built-in functions in the [Built-in Functions Reference](/docs/python/reference/built-in-functions).

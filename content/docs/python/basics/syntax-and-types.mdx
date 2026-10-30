@@ -1,0 +1,247 @@
+---
+title: Syntax & Primitive Data Types
+description: Master Python indentation, expressions, statements, primitive types (int, float, bool, None), and explicit type conversion.
+---
+
+Python's syntax emphasizes readability, semantic clarity, and low visual noise. Understanding how Python interprets tokens, manages significant indentation, and represents fundamental primitive types in memory is the first step toward writing idiomatic code.
+
+## Learning Objectives
+
+By completing this lesson, you will be able to:
+- Explain Python's significant indentation rule and avoid `IndentationError`.
+- Differentiate between expressions (which evaluate to values) and statements (which execute actions).
+- Work with Python's core primitive types: `int`, `float`, `bool`, and `NoneType`.
+- Understand integer arbitrary precision and IEEE 754 floating-point constraints.
+- Perform safe type conversions and handle `ValueError` exceptions.
+
+## Prerequisites
+
+- Completed [Getting Started with Python](/docs/python/getting-started) (interpreter, virtual environment, and script execution).
+
+## Syntax Foundations: Indentation & Statements
+
+Unlike C, Java, or JavaScript—which rely on curly braces `{}` to define blocks of code—Python uses **significant whitespace (indentation)**.
+
+### The Indentation Rule
+
+- A code block begins with an increased indentation level and ends when returning to the preceding indentation level.
+- The PEP 8 standard mandates **4 spaces per indentation level**. Never mix tabs and spaces.
+
+```python
+# Valid indentation block
+status_code = 200
+
+if status_code == 200:
+    message = "Request succeeded"
+    print(message)
+    log_entry = f"STATUS: {status_code}"
+    print(log_entry)
+```
+
+### Statements vs. Expressions
+
+- **Expression**: Any piece of code that evaluates to a value.
+  Examples: `4 + 5`, `len("python")`, `x > 10`.
+- **Statement**: An instruction that performs an action. Statements do not have values themselves.
+  Examples: variable assignment (`x = 10`), conditional branching (`if`), loops (`for`), imports (`import sys`).
+
+```python
+# Multi-line statements using parentheses (PEP 8 recommended)
+total = (
+    100
+    + 250
+    + 320
+)
+
+# Comments begin with # and are ignored by the parser
+# This is an inline explanation
+```
+
+## Core Primitive Data Types
+
+Python provides four fundamental scalar primitive types:
+
+| Type | Type Identifier | Description | Example Literal |
+|---|---|---|---|
+| **Integer** | `int` | Arbitrary-precision whole numbers | `42`, `-10`, `1_000_000` |
+| **Float** | `float` | Double-precision floating-point numbers | `3.14159`, `-0.001`, `2.5e-3` |
+| **Boolean** | `bool` | Logical truth values (`True` or `False`) | `True`, `False` |
+| **None** | `NoneType` | Absence of value / null sentinel | `None` |
+
+### 1. Integers (`int`) and Arbitrary Precision
+
+In Python 3, integers have **unlimited precision**. Unlike languages constrained to 32-bit or 64-bit integer registers (which overflow at 2^63 - 1), Python dynamically allocates memory to represent integers of arbitrary magnitude:
+
+```python
+# Calculations with astronomically large integers never overflow
+googol = 10 ** 100
+factorial_50 = 1
+for i in range(1, 51):
+    factorial_50 *= i
+
+print(f"Digits in 50!: {len(str(factorial_50))}")  # -> Digits in 50!: 65
+print(factorial_50)
+```
+
+You can use underscores as digit separators to enhance readability:
+
+```python
+network_bandwidth_bps = 10_000_000_000  # 10 Gbps
+hex_mask = 0xFF_AA_00
+binary_flags = 0b1010_1100
+```
+
+### 2. Floating-Point Numbers (`float`)
+
+Python floats are implemented as C double-precision floating-point numbers adhering to the **IEEE 754 standard** (64 bits: 1 sign bit, 11 exponent bits, 52 fraction bits).
+
+```python
+temperature = 98.6
+scientific = 1.602e-19  # Electron charge in coulombs
+```
+
+#### Floating-Point Representation Limitation
+
+Because binary hardware cannot exactly represent decimal fractions like $0.1$ or $0.2$, precision artifacts can arise:
+
+```python
+print(0.1 + 0.2)           # -> 0.30000000000000004
+print(0.1 + 0.2 == 0.3)    # -> False
+
+# Solution for financial calculations: use decimal module
+from decimal import Decimal
+price = Decimal("0.1") + Decimal("0.2")
+print(price == Decimal("0.3"))  # -> True
+```
+
+### 3. Booleans (`bool`)
+
+The `bool` type has exactly two singleton instances: `True` and `False`.
+In Python, `bool` is a subclass of `int`. `True` evaluates to integer `1` and `False` evaluates to integer `0` in arithmetic contexts:
+
+```python
+is_active = True
+is_verified = False
+
+print(is_active + 10)  # -> 11 (True behaves as 1)
+```
+
+#### Truth Value Testing (Truthy and Falsy)
+
+Every Python object can be evaluated in a boolean context. The following values are considered **falsy**:
+- Constants: `None`, `False`
+- Numeric zeros: `0`, `0.0`, `0j`
+- Empty sequences and collections: `""` (empty string), `[]` (empty list), `()` (empty tuple), `{}` (empty dict), `set()` (empty set)
+
+All other objects evaluate to `True`.
+
+### 4. The `None` Singleton
+
+`None` represents the absence of a value. Functions that do not explicitly return a value implicitly return `None`.
+
+```python
+result = print("Logging...")
+print(result is None)  # -> True
+```
+
+Always check for `None` using the identity operator `is` rather than equality `==`:
+
+```python
+# Correct
+if configuration is None:
+    load_defaults()
+
+# Avoid
+if configuration == None:
+    pass
+```
+
+## Explicit Type Conversion (Type Casting)
+
+Python is **strongly typed**: it will not automatically coerce incompatible types (e.g., `'10' + 5` raises `TypeError`). Conversions must be explicit:
+
+```python
+# String to Integer
+raw_input = "2048"
+buffer_size = int(raw_input)
+print(buffer_size * 2)  # -> 4096
+
+# Float to Integer (truncates toward zero, does not round)
+print(int(9.99))   # -> 9
+print(int(-9.99))  # -> -9
+
+# Number to String
+port = 8080
+address = "127.0.0.1:" + str(port)
+print(address)     # -> 127.0.0.1:8080
+
+# Integer to Boolean
+print(bool(0))     # -> False
+print(bool(42))    # -> True
+print(bool(""))    # -> False
+print(bool("ok"))  # -> True
+```
+
+## Common Mistakes & Debugging
+
+### Mistake 1: Expecting `int()` to round floats
+`int()` truncates the decimal portion toward zero. To round, use the built-in `round()` function:
+```python
+value = 4.8
+print(int(value))    # -> 4 (truncation)
+print(round(value))  # -> 5 (rounded)
+```
+
+### Mistake 2: Mixing tabs and spaces
+Mixing tabs and spaces causes a runtime `TabError`. Configure your editor (VS Code, Neovim, PyCharm) to insert 4 spaces when pressing the Tab key.
+
+### Mistake 3: Invalid string conversion
+Attempting to convert non-digit strings to `int` raises `ValueError`:
+```python
+try:
+    number = int("abc")
+except ValueError as e:
+    print(f"Conversion error caught: {e}")
+```
+
+## Practice Exercises
+
+### Exercise 1 (Beginner): Temperature Converter
+Write an expression that converts a temperature in Fahrenheit (98.6°F) to Celsius (`C = (F - 32) * (5 / 9)`) and rounds the result to 2 decimal places.
+
+### Exercise 2 (Intermediate): Truthy Input Validator
+Write a function `validate_field(field_name: str, value: any) -> bool` that returns `True` if `value` is neither `None` nor an empty string, and `False` otherwise.
+
+## Exercise Solutions
+
+```python
+# Solution 1:
+fahrenheit = 98.6
+celsius = (fahrenheit - 32) * (5 / 9)
+rounded_celsius = round(celsius, 2)
+print(f"Celsius: {rounded_celsius}")  # -> Celsius: 37.0
+
+# Solution 2:
+def validate_field(field_name: str, value: any) -> bool:
+    if value is None:
+        return False
+    if isinstance(value, str) and value.strip() == "":
+        return False
+    return True
+
+print(validate_field("username", "developer"))  # -> True
+print(validate_field("email", ""))              # -> False
+print(validate_field("token", None))            # -> False
+```
+
+## Summary
+
+- Python uses 4-space indentation for lexical scoping instead of braces.
+- Integers have arbitrary precision; floats are IEEE 754 64-bit approximations.
+- `bool` inherits from `int` (`True == 1`, `False == 0`).
+- Use `is None` to test for null sentinels.
+- Python is strongly typed: conversions between incompatible types must be explicit.
+
+## Next Step
+
+Explore how Python binds symbolic names to these heap-allocated types in [Variables & Assignment](/docs/python/basics/variables).

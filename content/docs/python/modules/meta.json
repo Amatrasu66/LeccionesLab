@@ -1,0 +1,13 @@
+{
+  "title": "Modules & Standard Library",
+  "pages": [
+    "modules-and-imports",
+    "packages-and-namespaces",
+    "scripts-and-entrypoints",
+    "standard-library",
+    "iteration-utilities",
+    "cli-with-argparse",
+    "subprocess-execution",
+    "environments-and-packaging"
+  ]
+}

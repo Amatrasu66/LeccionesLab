@@ -1,0 +1,252 @@
+---
+title: Iterators, Generators & Lazy Evaluation
+description: Deep dive into Python's iterator protocol, generator state machines with yield, memory streaming, bidirectional communication with send(), and yield from.
+---
+
+At the heart of Python's data model lies the **iteration protocol**. It powers `for`-loops, comprehensions, unpacking, and streaming data pipelines.
+
+While normal functions run from top to bottom and return a single value before destroying their execution frame, **generators** can yield multiple values over time, suspending and resuming their execution state on demand. This enables lazy evaluation, where gigabyte-scale datasets can be processed using only megabytes of RAM.
+
+## Learning Objectives
+
+By completing this lesson, you will be able to:
+- Implement Python's **Iterator Protocol** using `__iter__()` and `__next__()`.
+- Explain how `for`-loops internally handle the `StopIteration` exception.
+- Write generator functions using `yield` to stream infinite or large datasets lazily.
+- Connect generators into multi-stage data processing pipelines.
+- Delegate sub-generator execution cleanly with `yield from`.
+- Control generator execution bidirectionally using `.send()`, `.throw()`, and `.close()`.
+
+## Prerequisites
+
+- [Functions & Scope](/docs/python/basics/functions)
+- [Comprehensions & Generator Expressions](/docs/python/intermediate/comprehensions)
+
+## 1. The Iterator Protocol Under the Hood
+
+In Python, an **iterable** is an object capable of returning an **iterator** when passed to `iter()`.
+
+An **iterator** is an object with a `__next__()` method that returns successive items, raising `StopIteration` when no further items remain.
+
+```text
+  Iterable (e.g. list, dict, set)
+       │
+       ▼  iter(obj) -> calls obj.__iter__()
+  Iterator
+       │
+       ▼  next(iterator) -> calls iterator.__next__()
+  Values ... ──▶ StopIteration (signals completion)
+```
+
+Here is exactly what Python does when you write a `for`-loop:
+
+```python
+# The Python for-loop under the hood:
+items = ["alpha", "beta", "gamma"]
+
+# 1. Obtain an iterator from the iterable
+iterator = iter(items)
+
+# 2. Repeatedly call next() until StopIteration is encountered
+while True:
+    try:
+        val = next(iterator)
+        print("Item:", val)
+    except StopIteration:
+        # Loop terminates cleanly
+        break
+```
+
+### Implementing a Custom Iterator Class
+```python
+class CountUpTo:
+    """Custom iterator generating numbers from 1 up to max_val."""
+    def __init__(self, max_val: int):
+        self.max_val = max_val
+        self.current = 1
+
+    def __iter__(self):
+        # An iterator must return itself from __iter__
+        return self
+
+    def __next__(self) -> int:
+        if self.current > self.max_val:
+            raise StopIteration
+        val = self.current
+        self.current += 1
+        return val
+
+counter = CountUpTo(3)
+for n in counter:
+    print(n)
+# -> 1
+# -> 2
+# -> 3
+```
+
+## 2. Generator Functions and `yield`
+
+Writing class-based iterators requires managing state variables manually. A **generator function** accomplishes the exact same thing automatically by using the `yield` keyword.
+
+When a function contains `yield`, calling it does **not** execute the code. Instead, it returns a generator object. Execution begins only when `next()` is called on the generator:
+
+```python
+def count_up_to(max_val: int):
+    print("-> Generator started")
+    current = 1
+    while current <= max_val:
+        print(f"-> Yielding {current}")
+        yield current  # Suspends execution; returns value to caller
+        print(f"-> Resumed after yielding {current}")
+        current += 1
+    print("-> Generator finished")
+
+gen = count_up_to(2)
+print("Before first next()")
+print(next(gen))
+print("Between next() calls")
+print(next(gen))
+```
+
+Output:
+```text
+Before first next()
+-> Generator started
+-> Yielding 1
+1
+Between next() calls
+-> Resumed after yielding 1
+-> Yielding 2
+2
+```
+
+## 3. Composing Streaming Data Pipelines
+
+Generators can be chained together like UNIX pipes (`cat log | grep ERROR | cut -d' ' -f2`). Each stage processes one item at a time, keeping RAM consumption constant ($O(1)$) even when streaming a 100 GB file:
+
+```python
+import io
+
+# Simulated log file in memory
+raw_log = """
+2026-10-19 [INFO] Server started
+2026-10-19 [ERROR] Database timeout on port 5432
+2026-10-19 [DEBUG] Healthcheck OK
+2026-10-19 [ERROR] Connection reset by peer
+"""
+
+# Stage 1: Line reader
+def get_lines(stream):
+    for line in stream:
+        yield line.strip()
+
+# Stage 2: Filter error lines
+def filter_errors(lines):
+    for line in lines:
+        if "[ERROR]" in line:
+            yield line
+
+# Stage 3: Extract message payload
+def parse_messages(error_lines):
+    for line in error_lines:
+        parts = line.split("[ERROR] ", 1)
+        yield parts[1]
+
+# Connect the pipeline
+stream = io.StringIO(raw_log.strip())
+lines = get_lines(stream)
+errors = filter_errors(lines)
+messages = parse_messages(errors)
+
+for msg in messages:
+    print("Alert:", msg)
+# -> Alert: Database timeout on port 5432
+# -> Alert: Connection reset by peer
+```
+
+## 4. Delegating with `yield from`
+
+`yield from <iterable>` allows a generator to delegate a portion of its operations to another sub-generator cleanly:
+
+```python
+def numbers():
+    yield 1
+    yield 2
+
+def letters():
+    yield "A"
+    yield "B"
+
+def combined():
+    yield from numbers()
+    yield from letters()
+    yield "DONE"
+
+print(list(combined()))
+# -> [1, 2, 'A', 'B', 'DONE']
+```
+
+## Common Mistakes & Anti-Patterns
+
+### Mistake 1: Exhausting an Iterator Once
+Iterators and generators are single-use streams. Once exhausted, they cannot be rewound:
+```python
+gen = (x for x in [1, 2, 3])
+print(list(gen))  # -> [1, 2, 3]
+print(list(gen))  # -> [] (Empty! Generator was already consumed)
+```
+If you need to iterate multiple times, convert to a `list` or create a new generator instance.
+
+## Practice Exercises
+
+### Exercise 1: Fibonacci Generator
+Write a generator function `fibonacci_stream(limit: int | None = None)` that yields Fibonacci numbers ($0, 1, 1, 2, 3, 5, \dots$). If `limit` is provided, stop when the yielded number exceeds `limit`.
+
+### Exercise 2: Chunked Generator Streamer
+Write a generator function `chunked_stream(iterable, chunk_size: int)` that yields elements in sublists of size `chunk_size` without converting the entire source iterable into a list.
+
+## Exercise Solutions
+
+```python
+# Solution 1:
+def fibonacci_stream(limit: int | None = None):
+    a, b = 0, 1
+    while limit is None or a <= limit:
+        yield a
+        a, b = b, a + b
+
+# Generate first 7 Fibonacci numbers
+gen = fibonacci_stream(limit=10)
+print(list(gen))  # -> [0, 1, 1, 2, 3, 5, 8]
+
+# Solution 2:
+def chunked_stream(iterable, chunk_size: int):
+    if chunk_size <= 0:
+        raise ValueError("chunk_size must be positive")
+    iterator = iter(iterable)
+    while True:
+        chunk = []
+        try:
+            for _ in range(chunk_size):
+                chunk.append(next(iterator))
+        except StopIteration:
+            if chunk:
+                yield chunk
+            break
+        yield chunk
+
+stream = chunked_stream(range(10), 3)
+print(list(stream))
+# -> [[0, 1, 2], [3, 4, 5], [6, 7, 8], [9]]
+```
+
+## Summary
+
+- The iterator protocol consists of `__iter__()` returning an iterator and `__next__()` returning values until `StopIteration`.
+- Generator functions with `yield` maintain frame state and evaluate data lazily on demand.
+- Chaining generators creates streaming pipelines with $O(1)$ memory usage.
+- `yield from` cleanly delegates iteration to nested sub-generators.
+
+## Next Step
+
+Learn how to wrap functions, enforce cross-cutting concerns, and build meta-programming wrappers in [Closures, Scopes & Decorators](/docs/python/intermediate/decorators-and-closures).

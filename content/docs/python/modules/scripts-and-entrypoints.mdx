@@ -1,0 +1,216 @@
+---
+title: Executable Scripts & Entry Points
+description: Master __name__ == '__main__', reusable library design, CLI entry points, running packages with python -m, and project.scripts configuration.
+---
+
+In Python, any `.py` file can serve two distinct purposes:
+1. **An importable library**: Imported by other modules to provide functions, classes, and constants.
+2. **A standalone executable script**: Invoked directly from the terminal to perform a specific task.
+
+The mechanism that enables this dual capability is Python's built-in `__name__` variable. Learning to structure scripts properly allows code to be both thoroughly unit-tested as an imported library and seamlessly executed from the command line.
+
+## Learning Objectives
+
+By completing this lesson, you will be able to:
+- Explain how Python assigns values to `__name__` based on invocation context.
+- Implement the canonical `main(argv=None) -> int` pattern with `sys.exit()`.
+- Run modules and packages using the `python -m` flag to preserve package hierarchy.
+- Use `__main__.py` to create executable packages (e.g. `python -m mypackage`).
+- Configure modern console script entry points in `pyproject.toml`.
+- Write testable command-line scripts without unintended side-effects.
+
+## Prerequisites
+
+- [Modules, Namespaces & Import Machinery](/docs/python/modules/modules-and-imports)
+- [Packages, Organization & Circular Imports](/docs/python/modules/packages-and-namespaces)
+
+## 1. How `__name__` Works
+
+Whenever the Python interpreter runs a source file, it automatically assigns values to special dunder (double underscore) variables. One of the most important is `__name__`:
+
+- If the file is executed directly (e.g., `python script.py`):
+  Python sets `__name__ = "__main__"`.
+- If the file is imported by another module (e.g., `import script`):
+  Python sets `__name__ = "script"` (the module's actual name).
+
+```python
+# greeter.py
+def build_greeting(name: str) -> str:
+    """Pure business logic: clean, reusable, testable."""
+    return f"Hello, {name.strip().title()}!"
+
+if __name__ == "__main__":
+    # This block ONLY executes when run directly, NOT when imported!
+    import sys
+    user = sys.argv[1] if len(sys.argv) > 1 else "World"
+    print(build_greeting(user))
+```
+
+If another developer writes `from greeter import build_greeting`, the test/CLI execution block at the bottom will **not** run, keeping the library import silent and predictable.
+
+## 2. Canonical Script Architecture
+
+In production applications, scripts should avoid placing logic directly inside the `if __name__ == '__main__':` block. Instead, follow the standard **POSIX exit code architecture**:
+
+```python
+#!/usr/bin/env python3
+"""data_cleaner.py - Production script template."""
+
+from __future__ import annotations
+import sys
+from typing import Sequence
+
+def process_data(input_file: str) -> bool:
+    """Core logic returning success/failure boolean."""
+    print(f"Processing {input_file}...")
+    # Return True on success, False on error
+    return True
+
+def main(argv: Sequence[str] | None = None) -> int:
+    """
+    Main entry point accepting command-line arguments.
+    Returns:
+        int: POSIX exit code (0 for success, non-zero for error).
+    """
+    if argv is None:
+        argv = sys.argv[1:]
+
+    if not argv:
+        print("Error: missing required input file argument.", file=sys.stderr)
+        print("Usage: python data_cleaner.py <filename>", file=sys.stderr)
+        return 2  # Standard POSIX invalid argument exit code
+
+    input_file = argv[0]
+    success = process_data(input_file)
+    
+    return 0 if success else 1
+
+if __name__ == "__main__":
+    sys.exit(main())
+```
+
+### Why this structure matters:
+1. **Unit-Testable**: You can test `main(["test.csv"])` directly inside your test suite without spawning external shell subprocesses.
+2. **Explicit Exit Codes**: Returning integers like `0`, `1`, `2` allows CI/CD pipelines, Docker containers, and shell scripts (`$?`) to react correctly to errors.
+3. **No Global Variable Leakage**: Variables declared inside `main()` are locally scoped and garbage-collected when execution completes.
+
+## 3. Running Modules with `python -m`
+
+Running scripts via file paths (`python src/pkg/script.py`) adds `src/pkg/` to the beginning of `sys.path`. This often breaks relative imports or references to parent modules.
+
+The proper Pythonic approach is the `-m` (module) switch:
+```bash
+python -m pkg.script arg1 arg2
+```
+When using `-m`:
+1. The **current working directory** is placed at index 0 of `sys.path`.
+2. All package boundaries are respected.
+3. Relative imports like `from ..database import get_conn` resolve correctly.
+
+### Executable Packages with `__main__.py`
+If you place a file named `__main__.py` inside any package:
+```text
+my_tool/
+├── __init__.py
+├── __main__.py
+└── core.py
+```
+Users can execute the entire directory or zip bundle directly:
+```bash
+python -m my_tool --verbose
+```
+Python automatically executes `my_tool/__main__.py`!
+
+## 4. Packaging Entry Points in `pyproject.toml`
+
+When building a CLI tool intended to be installed via `pip` or `pipx`, you should define console script entry points in `pyproject.toml`:
+
+```toml
+[project]
+name = "my-cli-tool"
+version = "0.1.0"
+dependencies = []
+
+[project.scripts]
+mytool = "my_cli_tool.cli:main"
+```
+
+When a user runs `pip install my-cli-tool`, `pip` automatically creates an executable shim in the environment's `bin` directory named `mytool` that calls `my_cli_tool.cli.main()`.
+
+## Common Mistakes & Anti-Patterns
+
+### Mistake 1: Calling `sys.exit()` Inside Helper Functions
+Helper functions and business logic should raise standard exceptions, never terminate the interpreter directly:
+```python
+# ❌ Anti-pattern: Helper terminates interpreter
+def calculate_tax(amount: float):
+    if amount < 0:
+        print("Negative amount!", file=sys.stderr)
+        sys.exit(1)  # Kills testing frameworks and callers!
+
+# ✅ Best practice: Raise exception; handle in main()
+def calculate_tax(amount: float) -> float:
+    if amount < 0:
+        raise ValueError("Amount cannot be negative")
+    return amount * 0.2
+```
+
+## Practice Exercises
+
+### Exercise 1: Argument Parser Script
+Implement a function `parse_key_value_args(args: list[str]) -> dict[str, str]` that takes a list of strings in the format `["key=value", "port=8080", "debug=true"]` and converts them into a dictionary. If an element does not contain `=`, raise a `ValueError`.
+
+### Exercise 2: Script Exit Code Wrapper
+Write a function `run_cli_safely(fn, *args)` that calls an arbitrary function `fn(*args)`. If `fn` succeeds, return exit code `0`. If `fn` raises `ValueError`, print the error to stderr and return exit code `2`. If `fn` raises any other `Exception`, print `"Unexpected error"` and return exit code `1`.
+
+## Exercise Solutions
+
+```python
+import sys
+
+# Solution 1:
+def parse_key_value_args(args: list[str]) -> dict[str, str]:
+    result = {}
+    for item in args:
+        if "=" not in item:
+            raise ValueError(f"Invalid key=value parameter: '{item}'")
+        key, val = item.split("=", 1)
+        result[key.strip()] = val.strip()
+    return result
+
+print(parse_key_value_args(["env=production", "timeout=30"]))
+# -> {'env': 'production', 'timeout': '30'}
+
+# Solution 2:
+def run_cli_safely(fn, *args) -> int:
+    try:
+        fn(*args)
+        return 0
+    except ValueError as ve:
+        print(f"Validation error: {ve}", file=sys.stderr)
+        return 2
+    except Exception as exc:
+        print(f"Unexpected error: {exc}", file=sys.stderr)
+        return 1
+
+# Verification:
+def sample_good(): pass
+def sample_invalid(): raise ValueError("Bad configuration")
+def sample_crash(): raise RuntimeError("Database down")
+
+print(run_cli_safely(sample_good))     # -> 0
+print(run_cli_safely(sample_invalid))  # -> 2
+print(run_cli_safely(sample_crash))    # -> 1
+```
+
+## Summary
+
+- `__name__` equals `"__main__"` only when a file is executed directly.
+- The `main(argv=None) -> int` idiom provides clean CLI exit codes and seamless testing.
+- `python -m` ensures the top-level project root stays in `sys.path`.
+- `__main__.py` makes an entire package directory directly executable.
+- Never call `sys.exit()` in libraries or helpers; raise exceptions instead.
+
+## Next Step
+
+Explore Python's built-in standard library utilities for files, data, and system interaction in [Standard Library Essentials](/docs/python/modules/standard-library).

@@ -1,0 +1,340 @@
+---
+title: Performance & Profiling
+description: Measure execution timing with timeit and perf_counter, profile bottlenecks with cProfile and pstats, optimize caching with lru_cache, and inspect bytecode with dis.
+---
+
+> *"Premature optimization is the root of all evil (or at least most of it) in programming."*  
+> — **Donald Knuth**
+
+When optimizing Python applications, intuition is frequently misleading. Fast Python code is rarely produced by applying micro-tricks or rewriting loops into obscure one-liners; it is produced by **choosing the right algorithmic complexity**, **selecting appropriate data structures**, **measuring bottlenecks with profilers**, and **leveraging built-in C-accelerated primitives**.
+
+## Learning Objectives
+
+By completing this lesson, you will be able to:
+- Evaluate algorithmic time and space complexity ($O(1)$, $O(N)$, $O(N \log N)$, $O(N^2)$).
+- Accurately measure execution duration using `time.perf_counter` and `timeit`.
+- Profile CPU-heavy applications with `cProfile` and analyze execution call graphs with `pstats`.
+- Apply memoization using `functools.lru_cache` and `functools.cache`.
+- Choose optimal data structures based on access, insertion, and lookup patterns.
+- Stream large datasets with generators to minimize working set memory allocations.
+- Inspect compiled Python bytecode using the `dis` module to understand execution mechanics.
+
+## Prerequisites
+
+- [Lists & Dynamic Arrays](/docs/python/collections/lists)
+- [Dictionaries & Hash Tables](/docs/python/collections/dictionaries)
+- [Iterators, Generators & Lazy Evaluation](/docs/python/intermediate/iterators-and-generators)
+- [Closures, Scopes & Decorators](/docs/python/intermediate/decorators-and-closures)
+
+## 1. Algorithmic Complexity: The Foundation of Performance
+
+Before profiling code, understand your algorithm's Big-O complexity. No amount of micro-optimization can compensate for an $O(N^2)$ algorithm when $N$ grows large:
+
+| Complexity | Common Operations in Python | Scale Behavior ($N=10^5$) |
+|---|---|---|
+| **$O(1)$** | Dict lookup `d[k]`, Set membership `x in s`, List append `l.append(x)`, List indexing `l[i]` | Instantaneous |
+| **$O(\log N)$** | Binary search via `bisect.bisect_left` | ~17 operations |
+| **$O(N)$** | List membership `x in l`, `min()`, `max()`, string concatenations `s += char` in loops | $100,000$ operations |
+| **$O(N \log N)$** | Python's Timsort algorithm (`sorted()` and `.sort()`) | ~$1.6 \times 10^6$ operations |
+| **$O(N^2)$** | Nested loops over lists, repeated `list.insert(0, x)` in a loop | $10^{10}$ operations (freezes process!) |
+
+<Callout type="tip" title="Data Structure Choice Trumps Micro-Optimizations">
+Replacing a `list` with a `set` for membership tests (`x in items`) transforms an $O(N)$ linear search into an $O(1)$ average-time hash lookup. For 100,000 elements, this change alone can provide a 10,000x speedup!
+</Callout>
+
+## 2. Accurate Measurement: `time.perf_counter` and `timeit`
+
+### Micro-Benchmarking with `timeit`
+
+Never measure microsecond operations with `time.time()`, as wall-clock time can be adjusted by NTP updates and lacks high resolution. Instead, use `time.perf_counter()` or the standard `timeit` module:
+
+```python
+import timeit
+
+# Measure list comprehension vs map() over 100,000 executions
+comp_time = timeit.timeit(
+    stmt="[x * 2 for x in range(100)]",
+    number=50_000,
+)
+
+map_time = timeit.timeit(
+    stmt="list(map(lambda x: x * 2, range(100)))",
+    number=50_000,
+)
+
+print(f"List comprehension: {comp_time:.4f} s")
+print(f"map() with lambda:  {map_time:.4f} s")
+```
+
+`timeit` temporarily disables the cyclic garbage collector to minimize measurement jitter.
+
+### Macro Timing with `time.perf_counter()`
+
+For measuring elapsed wall time across real application operations:
+
+```python
+import time
+
+start = time.perf_counter()
+# Execute operation:
+total = sum(i * i for i in range(1_000_000))
+elapsed = time.perf_counter() - start
+
+print(f"Computation completed in {elapsed * 1000:.2f} ms")
+```
+
+## 3. Profiling with `cProfile` and `pstats`
+
+While `timeit` answers *"How fast is this specific snippet?"*, a profiler answers: **"Where is my application spending the majority of its CPU time?"**
+
+Python includes `cProfile`, a deterministic C-extension profiler with minimal runtime overhead:
+
+```python
+import cProfile
+import pstats
+import io
+
+def heavy_computation():
+    # Simulate data transformation
+    numbers = [x for x in range(200_000)]
+    squared = [x ** 2 for x in numbers]
+    sorted_data = sorted(squared, reverse=True)
+    return sorted_data[:10]
+
+# Profile execution:
+profiler = cProfile.Profile()
+profiler.enable()
+
+result = heavy_computation()
+
+profiler.disable()
+
+# Format and sort profiling results by cumulative time:
+stream = io.StringIO()
+stats = pstats.Stats(profiler, stream=stream).sort_stats("cumulative")
+stats.print_stats(10)
+print(stream.getvalue())
+```
+
+Sample output:
+```text
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+        1    0.000    0.000    0.045    0.045 worker.py:6(heavy_computation)
+        1    0.024    0.024    0.024    0.024 {built-in method builtins.sorted}
+        1    0.012    0.012    0.012    0.012 worker.py:9(<listcomp>)
+        1    0.009    0.009    0.009    0.009 worker.py:8(<listcomp>)
+```
+
+### Key Column Metrics
+- **`ncalls`**: Number of times the function was invoked.
+- **`tottime`**: Total time spent *inside* the function itself (excluding time spent in subfunctions it called).
+- **`cumtime`**: Cumulative time spent in this function *plus* all subfunctions it invoked.
+- **`filename:lineno(function)`**: Exact location of the execution hotspot.
+
+## 4. Caching Hot Paths with `functools.lru_cache`
+
+For pure functions (functions whose return value depends exclusively on immutable arguments without side effects), repeated calculations can be cached in memory:
+
+```python
+import functools
+
+# Without memoization, recursive fibonacci is O(2^N)
+# With @lru_cache, it becomes linear O(N)!
+@functools.lru_cache(maxsize=128)
+def fibonacci(n: int) -> int:
+    if n < 2:
+        return n
+    return fibonacci(n - 1) + fibonacci(n - 2)
+
+print(fibonacci(50))  # Instantaneous!
+print(fibonacci.cache_info())
+# CacheInfo(hits=48, misses=51, maxsize=128, currsize=51)
+```
+
+<Callout type="warning" title="Arguments Must Be Hashable">
+Every argument passed to an `@lru_cache` function must be hashable. Passing a mutable `list` or `dict` raises `TypeError: unhashable type`. Use `tuple` or frozen dataclasses when caching structured arguments.
+</Callout>
+
+## 5. Generator Streaming to Eliminate Allocation Spikes
+
+Creating massive intermediate lists consumes gigabytes of heap memory and stresses the operating system's virtual memory manager:
+
+```python
+# AVOID: Allocates 10 million integers in memory at once (~80MB RAM)
+def read_numbers_bad():
+    return [x for x in range(10_000_000) if x % 2 == 0]
+
+# PREFER: Streams elements lazily, keeping memory at ~100 bytes!
+def read_numbers_good():
+    for x in range(10_000_000):
+        if x % 2 == 0:
+            yield x
+```
+
+Review our dedicated [Iterators, Generators & Lazy Evaluation](/docs/python/intermediate/iterators-and-generators) lesson for full generator pipeline design.
+
+## 6. Inspecting Bytecode with `dis`
+
+Python source code compiles to intermediate bytecode instructions executed by the CPython virtual machine. The `dis` (disassembler) module lets you inspect generated bytecode:
+
+```python
+import dis
+
+def calculate(a, b):
+    return a + b * 2
+
+dis.dis(calculate)
+```
+
+Output:
+```text
+  2           0 RESUME                   0
+              2 LOAD_FAST                0 (a)
+              4 LOAD_FAST                1 (b)
+              6 LOAD_CONST               1 (2)
+              8 BINARY_OP                5 (*)
+             12 BINARY_OP                0 (+)
+             16 RETURN_VALUE
+```
+
+### Why Inspect Bytecode?
+- It reveals whether operations happen in fast local variable slots (`LOAD_FAST`) versus slower global dictionary lookups (`LOAD_GLOBAL`).
+- It helps you understand peephole optimizations (e.g. constant folding: `2 * 60 * 60` is precomputed into `7200` at compile time).
+- Note: **Bytecode instruction counts do not correlate 1:1 with execution speed**. A single bytecode instruction (like `BINARY_OP`) can take 1 nanosecond for integers or 100 milliseconds for complex custom objects with overloaded dunder methods. Always measure with a profiler!
+
+## Practical Example: Data Deduplication Optimization
+
+Consider a routine tasked with deduplicating 200,000 records while preserving order:
+
+```python
+import time
+
+records = [f"user_{i % 5000}" for i in range(200_000)]
+
+# Approach 1: Naive list-based check -> O(N * K)
+def dedup_naive(data: list[str]) -> list[str]:
+    seen = []
+    for item in data:
+        if item not in seen:  # O(K) linear scan!
+            seen.append(item)
+    return seen
+
+# Approach 2: Combined list + set -> O(N)
+def dedup_fast(data: list[str]) -> list[str]:
+    seen = set()
+    result = []
+    for item in data:
+        if item not in seen:  # O(1) hash table lookup!
+            seen.add(item)
+            result.append(item)
+    return result
+
+# Benchmark
+t0 = time.perf_counter()
+res_fast = dedup_fast(records)
+fast_time = time.perf_counter() - t0
+
+print(f"Fast deduplication (set): {fast_time * 1000:.2f} ms")
+# Typically ~15 ms vs ~12,000 ms for naive list search!
+```
+
+## Common Mistakes & Anti-Patterns
+
+### 1. Repeated String Concatenation in Loops
+```python
+# AVOID: Strings are immutable; s += x allocates a brand-new string every loop!
+s = ""
+for word in words:
+    s += word + ", "
+
+# PREFER: Collect in a list and join once (C-level buffer pre-allocation)
+s = ", ".join(words)
+```
+
+### 2. Optimizing Without Profiling Data
+Developers often spend hours optimizing a 10-line calculation that accounts for 0.1% of total program runtime while ignoring an unindexed database query or redundant HTTP roundtrip consuming 95% of wall-clock time.
+
+## Practice Exercises
+
+### Exercise 1: Bounded LRU Cache Verification
+Write a function `fetch_user_metadata(user_id: int)` decorated with `@functools.lru_cache(maxsize=3)`. Simulate a slow lookup with a print statement. Call the function with user IDs `1, 2, 3, 1, 4, 1`. Inspect `cache_info()` and explain why the second call to user `1` was a cache hit, but the third call was a miss.
+
+### Exercise 2: Top-K Words Benchmark
+Implement two functions that extract the 10 most common words from a list of 100,000 words:
+1. `top_k_sort`: Using `dict` counting followed by `sorted()`.
+2. `top_k_counter`: Using `collections.Counter(words).most_common(10)`.
+Compare their execution duration using `time.perf_counter()`.
+
+## Exercise Solutions & Reasoning
+
+```python
+# Solution 1
+import functools
+
+@functools.lru_cache(maxsize=3)
+def fetch_user_metadata(user_id: int) -> dict:
+    return {"user_id": user_id, "status": "active"}
+
+# Sequence: 1, 2, 3, 1, 4, 1
+# Access 1: Miss. Cache: [1]
+# Access 2: Miss. Cache: [1, 2]
+# Access 3: Miss. Cache: [1, 2, 3]
+# Access 1: HIT!  Cache: [2, 3, 1] (1 moved to most recently used)
+# Access 4: Miss. Evicts 2! Cache: [3, 1, 4]
+# Access 1: HIT!  (1 is still in cache)
+
+for uid in [1, 2, 3, 1, 4, 1]:
+    fetch_user_metadata(uid)
+
+info = fetch_user_metadata.cache_info()
+assert info.hits == 2
+assert info.misses == 4
+
+# Solution 2
+from collections import Counter
+import time
+
+words = [f"word_{i % 1000}" for i in range(100_000)]
+
+def top_k_sort(data: list[str], k: int = 10):
+    counts = {}
+    for w in data:
+        counts[w] = counts.get(w, 0) + 1
+    # Full sort is O(U log U) where U is unique words:
+    return sorted(counts.items(), key=lambda pair: pair[1], reverse=True)[:k]
+
+def top_k_counter(data: list[str], k: int = 10):
+    # Counter uses heapq.nlargest under the hood: O(U log K)
+    return Counter(data).most_common(k)
+
+t0 = time.perf_counter()
+res1 = top_k_sort(words)
+t_sort = time.perf_counter() - t0
+
+t1 = time.perf_counter()
+res2 = top_k_counter(words)
+t_counter = time.perf_counter() - t1
+
+assert res1 == res2
+print(f"Sort: {t_sort*1000:.2f}ms vs Counter: {t_counter*1000:.2f}ms")
+```
+
+## Summary
+
+- High performance starts with selecting algorithms with superior Big-O complexity.
+- Use `timeit` for micro-benchmarks and `time.perf_counter()` for macro operations.
+- `cProfile` and `pstats` reveal actual CPU bottlenecks rather than guessed hotspots.
+- Use `@functools.lru_cache` to memoize expensive pure computations.
+- Stream large collections with generators to minimize heap allocations.
+- Never optimize blindly: measure before, during, and after any refactor.
+
+## Official Documentation References
+
+- [`timeit` — Measure execution time of small code snippets](https://docs.python.org/3/library/timeit.html)
+- [The Python Profilers (`cProfile`, `pstats`)](https://docs.python.org/3/library/profile.html)
+- [`functools` — Higher-order functions and operations on callable objects](https://docs.python.org/3/library/functools.html#functools.lru_cache)
+- [`dis` — Disassembler for Python bytecode](https://docs.python.org/3/library/dis.html)
+
+## Next Step
+
+Learn how to manage concurrent threads, shared memory, and synchronization primitives in [Multithreading & Shared State](/docs/python/advanced/multithreading-and-shared-state).

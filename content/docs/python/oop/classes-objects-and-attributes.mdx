@@ -1,0 +1,373 @@
+---
+title: Classes, Objects & Attributes
+description: Deep exploration of Python's object model, class vs. instance namespaces, self mechanics, __init__ vs __new__, attribute lookup, object identity, and mutable class-attribute pitfalls.
+---
+
+In Python, **everything is an object**: integers, strings, functions, modules, and classes themselves. Python's object-oriented paradigm provides a cohesive model for bundling state (attributes) and behavior (methods) together.
+
+Understanding Python's object system requires understanding how namespaces work. Unlike languages where objects are rigid struct-like memory blocks compiled ahead-of-time, a Python object is conceptually a dynamic namespace backed by a dictionary (`__dict__`), governed by well-defined attribute lookup rules.
+
+## Learning Objectives
+
+By completing this lesson, you will be able to:
+- Distinguish between a class (a callable type factory) and an instance (a concrete memory allocation).
+- Explain the role of `self` and trace how Python binds method calls to instances.
+- Differentiate between two-phase construction (`__new__`) and initialization (`__init__`).
+- Navigate instance namespaces vs. class namespaces and trace attribute lookup resolution.
+- Understand object identity (`id()`), reference aliasing, and the difference between `is` and `==`.
+- Recognize and prevent the classic mutable class attribute trap.
+- Model real-world systems with clear instance boundaries and data integrity.
+
+## Prerequisites
+
+- [Variables, Assignment & References](/docs/python/basics/variables)
+- [Functions, Signatures & Scopes](/docs/python/basics/functions)
+- [Dictionaries & Hash Tables](/docs/python/collections/dictionaries)
+
+## 1. Classes vs. Instances: Blueprints and Allocations
+
+A **class** in Python defines a custom user-defined type. It acts as both a blueprint and a factory: calling a class instantiates a new object of that type.
+
+```python
+class InventoryItem:
+    """Blueprint representing a stock item in a warehouse."""
+    pass
+
+# Instantiating two independent objects
+item_a = InventoryItem()
+item_b = InventoryItem()
+
+print(type(item_a))  # <class '__main__.InventoryItem'>
+print(item_a is item_b)  # False: distinct objects in memory
+```
+
+When Python evaluates the `class` statement:
+1. A new local namespace is created.
+2. The class body statements execute inside this namespace.
+3. A `type` object is constructed, binding the class name to that newly created type object in the enclosing scope.
+
+Each call `InventoryItem()` requests the interpreter to allocate a brand-new instance of `InventoryItem`.
+
+## 2. Object Instantiation and The Role of `self`
+
+When you define methods inside a class, their first parameter is conventionally named `self`.
+
+```python
+class Student:
+    def __init__(self, name: str, student_id: int):
+        self.name = name
+        self.student_id = student_id
+        self.courses: list[str] = []
+
+    def enroll(self, course_name: str) -> None:
+        self.courses.append(course_name)
+```
+
+### What is `self`?
+
+`self` is **not a reserved keyword** in Python; it is an explicit parameter name dictated by style convention (PEP 8). When you invoke an instance method:
+
+```python
+s = Student("Ada Lovelace", 101)
+s.enroll("Algorithms")
+```
+
+Python automatically translates this call behind the scenes into:
+
+```python
+Student.enroll(s, "Algorithms")
+```
+
+The instance `s` is passed as the first argument (`self`) to the function object stored on `Student`. This explicit passing makes attribute access unambiguous: within `enroll`, `self.courses` explicitly targets the calling instance's dictionary.
+
+<Callout type="tip" title="Explicit is better than implicit">
+Unlike C++ or Java, which hide the `this` pointer in method declarations, Python follows the Zen of Python principle: *"Explicit is better than implicit."* You must explicitly declare `self` as the first argument in instance methods.
+</Callout>
+
+## 3. Object Construction vs. Initialization: `__new__` vs. `__init__`
+
+A common misconception is that `__init__` is the "constructor" of an object. In Python, object creation is a **two-phase protocol**:
+
+1. **`__new__(cls, *args, **kwargs)`**: The **allocator / constructor**. A static method (handled specially by the interpreter) that allocates the raw memory space for the object and returns the new instance.
+2. **`__init__(self, *args, **kwargs)`**: The **initializer**. It receives the newly created instance as `self` and populates its initial state.
+
+```python
+class Connection:
+    def __new__(cls, endpoint: str):
+        print(f"1. __new__ allocating memory for {cls.__name__}")
+        instance = super().__new__(cls)
+        return instance
+
+    def __init__(self, endpoint: str):
+        print(f"2. __init__ initializing state with endpoint={endpoint}")
+        self.endpoint = endpoint
+
+conn = Connection("https://api.internal.net")
+```
+
+Expected output:
+```text
+1. __new__ allocating memory for Connection
+2. __init__ initializing state with endpoint=https://api.internal.net
+```
+
+If `__new__` does not return an instance of `cls` (for example, if it returns a cached instance of another class), Python skips calling `__init__` altogether. You rarely need to override `__new__` in day-to-day code, except when subclassing immutable types (like `int` or `tuple`) or creating custom metaclasses or singletons.
+
+## 4. Instance Attributes vs. Class Attributes
+
+Python classes and instances maintain their own distinct namespaces via internal mapping dictionaries (`__dict__`):
+
+- **Class Attributes**: Variables defined directly inside the class body. They are shared across all instances of the class.
+- **Instance Attributes**: Variables attached to `self` (usually inside `__init__`). They belong exclusively to that individual instance.
+
+```python
+class Product:
+    # Class attribute: shared across all products
+    currency: str = "USD"
+    tax_rate: float = 0.08
+
+    def __init__(self, sku: str, base_price: float):
+        # Instance attributes: unique to each instance
+        self.sku = sku
+        self.base_price = base_price
+
+p1 = Product("WIDGET-01", 100.0)
+p2 = Product("GADGET-02", 250.0)
+
+print(p1.currency)  # USD (found on class)
+print(p2.currency)  # USD (found on class)
+print(p1.sku)       # WIDGET-01 (found on p1)
+```
+
+Let's inspect their underlying namespaces:
+
+```python
+print(p1.__dict__)
+# {'sku': 'WIDGET-01', 'base_price': 100.0}
+
+print(Product.__dict__['currency'])
+# 'USD'
+```
+
+Notice that `p1.__dict__` does not contain `currency`. When accessing `p1.currency`, Python executes an attribute lookup cascade.
+
+## 5. Attribute Lookup Cascade and Shadowing
+
+When you evaluate `obj.attr`, Python traverses a search order:
+
+```text
+┌────────────────────────────────────────────────────────┐
+│ 1. Is 'attr' a data descriptor on type(obj) or bases?  │
+│    (e.g., @property with setter)                       │
+└──────────────────────────┬─────────────────────────────┘
+                           │ No
+                           ▼
+┌────────────────────────────────────────────────────────┐
+│ 2. Is 'attr' in obj.__dict__ (the instance namespace)? │
+└──────────────────────────┬─────────────────────────────┘
+                           │ No
+                           ▼
+┌────────────────────────────────────────────────────────┐
+│ 3. Is 'attr' in type(obj).__dict__ or base classes?    │
+│    (Class attributes, non-data descriptors, methods)   │
+└──────────────────────────┬─────────────────────────────┘
+                           │ No
+                           ▼
+┌────────────────────────────────────────────────────────┐
+│ 4. Does type(obj) implement __getattr__?               │
+│    If not, raise AttributeError.                       │
+└────────────────────────────────────────────────────────┘
+```
+
+### Shadowing Class Attributes
+
+Assigning to an attribute via an instance reference (`p1.currency = "EUR"`) does **not** change the class attribute. Instead, it writes a new key into `p1.__dict__`, **shadowing** the class attribute for `p1` only:
+
+```python
+p1 = Product("SKU-1", 50.0)
+p2 = Product("SKU-2", 80.0)
+
+# Rebind on p1
+p1.currency = "EUR"
+
+print(p1.currency)  # EUR (reads from p1.__dict__)
+print(p2.currency)  # USD (falls back to Product.__dict__)
+print(Product.currency)  # USD (unchanged)
+```
+
+## 6. Object Identity, References, and Aliasing
+
+In Python, variables do not store objects directly; they store **pointers/references** to objects located on the heap.
+
+```python
+a = Product("A1", 10.0)
+b = a  # b references the EXACT SAME object as a
+c = Product("A1", 10.0)  # c references a brand-new object with identical data
+
+print(a is b)  # True: identical memory address id(a) == id(b)
+print(a is c)  # False: distinct allocations
+print(a == c)  # False: by default, == checks identity unless __eq__ is overridden
+```
+
+<Callout type="warning" title="Language Guarantees vs. CPython Optimization">
+The `is` operator checks identity: `id(x) == id(y)`. In CPython, `id(obj)` corresponds to the virtual memory address of the `PyObject` structure. However, Python's language specification only guarantees that `id()` returns a unique, constant integer during an object's lifetime—it does not mandate memory addresses. Other implementations (PyPy, Jython) may use different integer schemes.
+</Callout>
+
+## 7. The Classic Mutable Class Attribute Trap
+
+The most dangerous pitfall for newcomers is defining a mutable object (such as a `list`, `dict`, or `set`) as a class attribute.
+
+### The Broken Pattern
+
+```python
+class WarehouseShelf:
+    # BUG: items list is created ONCE when the class definition is parsed!
+    items: list[str] = []
+
+    def add_item(self, item: str):
+        self.items.append(item)
+
+shelf_a = WarehouseShelf()
+shelf_b = WarehouseShelf()
+
+shelf_a.add_item("Screwdriver")
+
+# Unintended side-effect: shelf_b shows the item added to shelf_a!
+print(shelf_b.items)  # ['Screwdriver']
+print(shelf_a.items is shelf_b.items)  # True!
+```
+
+### The Correct Idiom
+
+Always initialize mutable attributes inside `__init__`:
+
+```python
+class WarehouseShelf:
+    def __init__(self):
+        # Fresh list created per instance
+        self.items: list[str] = []
+
+    def add_item(self, item: str):
+        self.items.append(item)
+
+shelf_a = WarehouseShelf()
+shelf_b = WarehouseShelf()
+
+shelf_a.add_item("Screwdriver")
+print(shelf_b.items)  # []
+print(shelf_a.items is shelf_b.items)  # False
+```
+
+## Comparison Matrix
+
+| Aspect | Class Attribute | Instance Attribute | Local Variable |
+|---|---|---|---|
+| **Storage Location** | `Class.__dict__` | `instance.__dict__` | Function execution call frame stack |
+| **Lifetime** | Entire lifetime of the loaded class | Lifetime of the individual instance | Duration of function/method execution |
+| **Visibility** | Shared by all instances (unless shadowed) | Private to that specific instance | Confined to the function scope |
+| **Mutation Risk** | High if mutable (affects all instances) | Low (isolated per instance) | None across instances |
+| **Primary Use** | Constants, configuration defaults, schemas | Unique state, entity properties, IDs | Transient calculations, loop counters |
+
+## Practical Example: Warehouse Inventory Record System
+
+```python
+from typing import Final
+
+class InventoryRecord:
+    DEFAULT_WAREHOUSE: Final[str] = "WH-CENTRAL-01"
+    MIN_STOCK_THRESHOLD: int = 10
+
+    def __init__(
+        self,
+        sku: str,
+        name: str,
+        unit_price: float,
+        initial_stock: int = 0,
+        warehouse: str | None = None,
+    ):
+        if unit_price < 0:
+            raise ValueError(f"Price cannot be negative: {unit_price}")
+        if initial_stock < 0:
+            raise ValueError(f"Stock cannot be negative: {initial_stock}")
+
+        self.sku = sku
+        self.name = name
+        self.unit_price = unit_price
+        self.stock = initial_stock
+        self.warehouse = warehouse if warehouse is not None else self.DEFAULT_WAREHOUSE
+        self.audit_log: list[str] = []
+
+        self._record_event(f"Initialized with stock={initial_stock}")
+
+    def _record_event(self, event: str) -> None:
+        self.audit_log.append(event)
+
+    def restock(self, quantity: int) -> None:
+        if quantity <= 0:
+            raise ValueError("Restock quantity must be positive")
+        self.stock += quantity
+        self._record_event(f"Restocked +{quantity} (total: {self.stock})")
+
+    def dispatch(self, quantity: int) -> None:
+        if quantity <= 0:
+            raise ValueError("Dispatch quantity must be positive")
+        if quantity > self.stock:
+            raise ValueError(f"Insufficient stock: requested {quantity}, available {self.stock}")
+        self.stock -= quantity
+        self._record_event(f"Dispatched -{quantity} (remaining: {self.stock})")
+
+    def is_low_stock(self) -> bool:
+        return self.stock <= self.MIN_STOCK_THRESHOLD
+
+    def total_valuation(self) -> float:
+        return self.stock * self.unit_price
+```
+
+## Practice Exercises
+
+### Exercise 1: Student Grade Manager
+Create a class `StudentRecord` that initializes with `student_id: str` and `name: str`. It must track a list of numerical grades (ensure each instance has its own grade list). Implement methods:
+- `add_grade(grade: float) -> None`: Validates that grade is between 0.0 and 100.0, else raises `ValueError`.
+- `gpa() -> float`: Returns the average of grades. Returns `0.0` if no grades exist.
+- `has_honors() -> bool`: Returns `True` if GPA is 90.0 or higher.
+
+## Exercise Solutions & Reasoning
+
+```python
+class StudentRecord:
+    def __init__(self, student_id: str, name: str):
+        self.student_id = student_id
+        self.name = name
+        self.grades: list[float] = []
+
+    def add_grade(self, grade: float) -> None:
+        if not (0.0 <= grade <= 100.0):
+            raise ValueError(f"Grade must be between 0.0 and 100.0, got {grade}")
+        self.grades.append(grade)
+
+    def gpa(self) -> float:
+        if not self.grades:
+            return 0.0
+        return sum(self.grades) / len(self.grades)
+
+    def has_honors() -> bool:
+        return self.gpa() >= 90.0
+
+s = StudentRecord("S-42", "Margaret Hamilton")
+s.add_grade(94.0)
+s.add_grade(88.0)
+assert round(s.gpa(), 1) == 91.0
+assert s.has_honors() is True
+```
+
+## Summary
+
+- A class is a callable factory creating independent instance namespaces backed by `__dict__`.
+- `self` is the explicit first parameter bound to the instance during method execution.
+- `__new__` allocates memory for the instance; `__init__` initializes its attributes.
+- Instance attributes reside in `instance.__dict__`; class attributes reside in `Class.__dict__`.
+- Never put mutable containers (`list`, `dict`, `set`) as class attributes.
+
+## Next Step
+
+Learn how to structure object behaviors, alternative constructors, and protected attributes in [Methods & Object Design](/docs/python/oop/methods-and-object-design).

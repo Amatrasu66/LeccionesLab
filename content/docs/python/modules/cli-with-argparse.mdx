@@ -1,0 +1,234 @@
+---
+title: Command-Line Interfaces with argparse
+description: Build production-grade command-line interfaces with Python's built-in argparse module, including subparsers, type validation, and flag groups.
+---
+
+Command-line interfaces (CLIs) are the primary boundary between software programs and developer workflows, automation scripts, cron jobs, and CI/CD pipelines.
+
+Python includes `argparse` in the standard library. It handles option parsing, type conversion, automated `--help` manual generation, and complex sub-command architectures (similar to `docker`, `git`, or `kubectl`) without external dependencies like Click or Typer.
+
+## Learning Objectives
+
+By completing this lesson, you will be able to:
+- Construct an `ArgumentParser` with informative descriptions and epilogs.
+- Define positional arguments, optional flags, and boolean switches.
+- Enforce strict type casting, default fallbacks, and restricted value `choices`.
+- Architect multi-command tools using subparsers (`add_subparsers`).
+- Create mutually exclusive flag groups (e.g., `--verbose` vs `--quiet`).
+- Unit-test CLI parsing logic deterministically without invoking child processes.
+
+## Prerequisites
+
+- [Executable Scripts & Entry Points](/docs/python/modules/scripts-and-entrypoints)
+- [Exception Hierarchies & Robust Error Handling](/docs/python/intermediate/exception-handling)
+
+## 1. Basic ArgumentParser Anatomy
+
+Here is a complete, runnable CLI tool demonstrating positional arguments, typed options, and flags:
+
+```python
+import argparse
+import sys
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="logprocessor",
+        description="Filter and analyze server access logs.",
+        epilog="Example: logprocessor access.log --status 500 --limit 10",
+    )
+    
+    # 1. Positional argument (required by default)
+    parser.add_argument(
+        "logfile",
+        metavar="LOG_FILE",
+        type=str,
+        help="Path to the access log file to process",
+    )
+    
+    # 2. Optional flag with a value and type casting
+    parser.add_argument(
+        "-s", "--status",
+        type=int,
+        default=200,
+        help="HTTP status code to filter for (default: %(default)s)",
+    )
+    
+    # 3. Restricted choices
+    parser.add_argument(
+        "-f", "--format",
+        choices=["json", "text", "csv"],
+        default="text",
+        help="Output format (default: %(default)s)",
+    )
+    
+    # 4. Boolean flag (switch)
+    parser.add_argument(
+        "-v", "--verbose",
+        action="store_true",
+        help="Enable detailed debugging output",
+    )
+    
+    return parser
+
+# Testing the parser without command line invocation:
+parser = build_parser()
+args = parser.parse_args(["access.log", "--status", "404", "-v", "--format", "json"])
+
+print("Logfile:", args.logfile)   # -> 'access.log'
+print("Status:", args.status)     # -> 404 (automatically cast to int!)
+print("Verbose:", args.verbose)   # -> True
+print("Format:", args.format)     # -> 'json'
+```
+
+Running `python script.py --help` automatically outputs beautifully formatted terminal documentation:
+
+```text
+usage: logprocessor [-h] [-s STATUS] [-f {json,text,csv}] [-v] LOG_FILE
+
+Filter and analyze server access logs.
+
+positional arguments:
+  LOG_FILE              Path to the access log file to process
+
+options:
+  -h, --help            show this help message and exit
+  -s, --status STATUS   HTTP status code to filter for (default: 200)
+  -f, --format {json,text,csv}
+                        Output format (default: text)
+  -v, --verbose         Enable detailed debugging output
+```
+
+## 2. Advanced Features: Subparsers for Git-Style Tools
+
+Modern CLI tools often have multiple distinct subcommands (e.g. `git commit`, `git push`, `docker build`, `docker run`). `argparse` supports this natively via `add_subparsers`:
+
+```python
+import argparse
+
+def create_cli():
+    root_parser = argparse.ArgumentParser(prog="repo")
+    subparsers = root_parser.add_subparsers(dest="command", required=True)
+
+    # Subcommand: clone
+    clone_parser = subparsers.add_parser("clone", help="Clone a repository into a directory")
+    clone_parser.add_argument("url", help="Remote Git repository URL")
+    clone_parser.add_argument("--depth", type=int, default=0, help="Create a shallow clone")
+
+    # Subcommand: tag
+    tag_parser = subparsers.add_parser("tag", help="Create or delete tags")
+    tag_parser.add_argument("tag_name", help="Name of the Git tag")
+    tag_parser.add_argument("-d", "--delete", action="store_true", help="Delete the specified tag")
+
+    return root_parser
+
+cli = create_cli()
+
+# Simulate: repo clone https://github.com/org/repo.git --depth 1
+parsed = cli.parse_args(["clone", "https://github.com/org/repo.git", "--depth", "1"])
+print("Command:", parsed.command)  # -> 'clone'
+print("URL:", parsed.url)          # -> 'https://github.com/org/repo.git'
+print("Depth:", parsed.depth)      # -> 1
+```
+
+## 3. Custom Type Validation & Mutually Exclusive Groups
+
+### Custom Type Converter
+You can pass any callable as `type` to validate and convert inputs:
+
+```python
+from pathlib import Path
+import argparse
+
+def existing_file(path_str: str) -> Path:
+    p = Path(path_str)
+    if not p.is_file():
+        raise argparse.ArgumentTypeError(f"File not found: '{path_str}'")
+    return p
+
+parser = argparse.ArgumentParser()
+parser.add_argument("--config", type=existing_file, required=True)
+```
+
+### Mutually Exclusive Groups
+Prevent users from passing conflicting flags simultaneously:
+
+```python
+parser = argparse.ArgumentParser()
+group = parser.add_mutually_exclusive_group()
+group.add_argument("-v", "--verbose", action="store_true")
+group.add_argument("-q", "--quiet", action="store_true")
+
+# Passing both --verbose and --quiet triggers:
+# error: argument -q/--quiet: not allowed with argument -v/--verbose
+```
+
+## Common Mistakes & Anti-Patterns
+
+### Mistake 1: Parsing `sys.argv` Manually with String Splitting
+Relying on manual `sys.argv[1]` checks fails to handle optional flags, flag ordering, help screens, and type coercion.
+
+### Mistake 2: Hardcoding `parser.parse_args()` in Module Global Scope
+Always encapsulate `parser.parse_args(argv)` inside a function or pass explicit `argv` parameters so unit tests can pass mock arguments without mutating `sys.argv`.
+
+## Practice Exercises
+
+### Exercise 1: Port Validator CLI
+Build an `argparse.ArgumentParser` that accepts a `--port` optional integer argument. Write a custom type converter function `validate_port(val: str) -> int` that verifies the port number is between `1024` and `65535`. If outside that range, raise `argparse.ArgumentTypeError`.
+
+### Exercise 2: Dispatcher Pattern with `set_defaults`
+Use `subparser.set_defaults(handler=...)` to attach executable handler functions directly to subparsers, then invoke `args.handler(args)` from the main function.
+
+## Exercise Solutions
+
+```python
+import argparse
+
+# Solution 1:
+def validate_port(val: str) -> int:
+    try:
+        port = int(val)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"Port must be an integer, got '{val}'")
+    if not (1024 <= port <= 65535):
+        raise argparse.ArgumentTypeError(f"Port {port} out of range [1024-65535]")
+    return port
+
+p1 = argparse.ArgumentParser()
+p1.add_argument("--port", type=validate_port, default=8000)
+
+print(p1.parse_args(["--port", "8080"]).port)  # -> 8080
+
+# Solution 2:
+def handle_init(args):
+    return f"Initialized repository in {args.directory}"
+
+def handle_deploy(args):
+    return f"Deploying to environment '{args.target}'"
+
+parser = argparse.ArgumentParser(prog="ops")
+subparsers = parser.add_subparsers(dest="command", required=True)
+
+init_cmd = subparsers.add_parser("init")
+init_cmd.add_argument("directory", default=".", nargs="?")
+init_cmd.set_defaults(handler=handle_init)
+
+deploy_cmd = subparsers.add_parser("deploy")
+deploy_cmd.add_argument("--target", default="staging", choices=["staging", "prod"])
+deploy_cmd.set_defaults(handler=handle_deploy)
+
+# Dispatch execution cleanly
+args = parser.parse_args(["deploy", "--target", "prod"])
+result = args.handler(args)
+print(result)  # -> 'Deploying to environment 'prod''
+```
+
+## Summary
+
+- Use `argparse` for robust command-line argument validation, help messages, and type casting.
+- Support multi-command architectures with `add_subparsers()`.
+- Use `action="store_true"` for boolean flags and `choices=[...]` for enumeration constraints.
+- Attach business logic handlers to subparsers using `set_defaults(handler=...)`.
+
+## Next Step
+
+Learn how to safely execute and manage operating system commands in [Subprocess Execution & System Commands](/docs/python/modules/subprocess-execution).

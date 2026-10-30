@@ -1,0 +1,22 @@
+{
+  "title": "Python",
+  "root": true,
+  "pages": [
+    "index",
+    "getting-started",
+    "---Foundations---",
+    "basics",
+    "---Collections---",
+    "collections",
+    "---Modules & Standard Library---",
+    "modules",
+    "---Intermediate Features---",
+    "intermediate",
+    "---Object-Oriented Programming---",
+    "oop",
+    "---Advanced & Runtime Internals---",
+    "advanced",
+    "---Technical Reference---",
+    "reference"
+  ]
+}

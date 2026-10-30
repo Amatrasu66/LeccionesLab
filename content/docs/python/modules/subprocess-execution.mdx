@@ -1,0 +1,207 @@
+---
+title: Subprocess Execution & System Commands
+description: Production guide to spawning operating system processes with subprocess.run, Popen, I/O streaming, timeout enforcement, and preventing shell injection vulnerabilities.
+---
+
+Python scripts often orchestrate external utilities—compilers, Git commands, container engines, or media encoders. The Python standard library provides the `subprocess` module to spawn new operating system processes, connect to their input/output/error pipes, and obtain their return codes.
+
+Executing external commands safely requires understanding process boundaries, pipe buffers, timeouts, and critically, how to prevent lethal **command injection vulnerabilities**.
+
+## Learning Objectives
+
+By completing this lesson, you will be able to:
+- Replace insecure legacy tools like `os.system` and `os.popen` with modern `subprocess.run()`.
+- Pass arguments as tokenized sequences (`list[str]`) rather than interpolated strings.
+- Capture, decode, and separate `stdout` and `stderr` streams safely.
+- Prevent denial-of-service hanging by enforcing process execution `timeout` limits.
+- Handle non-zero exit codes idiomatically using `check=True` and `CalledProcessError`.
+- Understand the security risks of `shell=True` and use `shlex.quote()` when shell features are mandatory.
+- Stream real-time output from long-running jobs using `subprocess.Popen`.
+
+## Prerequisites
+
+- [Standard Library Essentials](/docs/python/modules/standard-library)
+- [Exception Hierarchies & Robust Error Handling](/docs/python/intermediate/exception-handling)
+
+## 1. Safe Process Execution with `subprocess.run()`
+
+The standard function for synchronous external command execution is `subprocess.run()`.
+
+```python
+import subprocess
+
+# 1. Pass command and arguments as a LIST of strings
+result = subprocess.run(
+    ["python3", "--version"],
+    capture_output=True,  # Capture stdout and stderr
+    text=True,            # Decode byte streams to str (UTF-8)
+    check=True,           # Raise CalledProcessError if returncode != 0
+    timeout=5,            # Kill process if it runs longer than 5 seconds
+)
+
+print("Returncode:", result.returncode)  # -> 0
+print("Output:", result.stdout.strip())  # -> Python 3.12.x
+```
+
+### Key Parameters:
+- `capture_output=True`: Captures process output into `result.stdout` and `result.stderr`.
+- `text=True`: Automatically decodes bytes into Python strings.
+- `check=True`: If the child process exits with an error status (non-zero), Python immediately raises `subprocess.CalledProcessError`.
+- `timeout=N`: If the child process hangs, Python raises `subprocess.TimeoutExpired` after $N$ seconds.
+
+## 2. Preventing Command Injection Vulnerabilities
+
+The most common security vulnerability when invoking operating system commands is **shell injection**.
+
+### The Vulnerability: `shell=True` with Unsanitized Input
+
+```python
+# ❌ DANGEROUS: DO NOT DO THIS!
+user_input = "file.txt; rm -rf /"
+# If shell=True is passed with a string, the shell interprets the semicolon as a command separator!
+# subprocess.run(f"cat {user_input}", shell=True)  <-- DISASTROUS!
+```
+
+### The Solution: Pass Arguments as a List (Process Isolation)
+
+When `shell=False` (the default) and arguments are passed as a list, Python invokes the OS system call (`execvp` / `CreateProcess`) directly. The arguments are passed to the binary as distinct memory strings without ever invoking `/bin/sh` or `cmd.exe`:
+
+```python
+# ✅ SAFE: The entire string is treated strictly as a single file path argument
+user_input = "file.txt; rm -rf /"
+# The system simply searches for a file literally named "file.txt; rm -rf /"
+result = subprocess.run(["cat", user_input], capture_output=True, text=True)
+print(result.returncode) # -> 1 (File not found error, no command execution!)
+```
+
+### When Shell is Mandatory: `shlex.quote()`
+If you must use shell features (e.g. pipes `|` or redirects `>`), you must sanitize any untrusted input using `shlex.quote`:
+
+```python
+import shlex
+
+filename = "report 2026.csv; rm -rf /"
+safe_filename = shlex.quote(filename)
+print(safe_filename)  # -> "'report 2026.csv; rm -rf /'"
+```
+
+## 3. Handling Errors and Timeouts
+
+Always catch `CalledProcessError` and `TimeoutExpired`:
+
+```python
+import subprocess
+
+try:
+    result = subprocess.run(
+        ["git", "diff", "--stat", "--staged"],
+        capture_output=True,
+        text=True,
+        check=True,
+        timeout=10,
+    )
+    print("Staged changes:\n", result.stdout)
+except subprocess.CalledProcessError as err:
+    print(f"Git failed with returncode {err.returncode}:", file=sys.stderr)
+    print(err.stderr, file=sys.stderr)
+except subprocess.TimeoutExpired:
+    print("Git command timed out after 10 seconds!", file=sys.stderr)
+```
+
+## 4. Real-Time Streaming with `subprocess.Popen`
+
+When running long operations (e.g., test suites, Docker builds, file downloads), waiting for `subprocess.run()` to finish before viewing logs degrades developer experience. Use `Popen` to stream line-by-line:
+
+```python
+import subprocess
+import sys
+
+def stream_command(cmd_args: list[str]) -> int:
+    with subprocess.Popen(
+        cmd_args,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        bufsize=1,  # Line-buffered
+    ) as proc:
+        if proc.stdout:
+            for line in proc.stdout:
+                sys.stdout.write(f"[STREAM] {line}")
+        proc.wait()
+        return proc.returncode
+
+# Example:
+# stream_command(["python3", "-c", "import time; [print(i) or time.sleep(0.2) for i in range(3)]"])
+```
+
+## Common Mistakes & Anti-Patterns
+
+### Mistake 1: Relying on `os.system`
+`os.system` is obsolete: it opens an unescaped subshell, mixes stdout/stderr directly into your terminal, and offers no return value capture.
+
+### Mistake 2: Missing Deadlock on Pipe Buffers with `Popen`
+If you use `Popen` with `stdout=PIPE` and `stderr=PIPE` and don't read from them, the operating system's pipe buffer (typically 64KB) will fill up, causing the child process to block permanently. Always use `proc.communicate()` or stream continuously.
+
+## Practice Exercises
+
+### Exercise 1: Resilient Command Runner
+Write a function `run_command_safe(command: list[str], timeout_sec: int = 5) -> dict` that executes a command. Return a dictionary containing `'success'` (bool), `'returncode'` (int), `'output'` (str), and `'error'` (str). Never let unhandled exceptions escape.
+
+### Exercise 2: Pipeline Simulator
+Write a function `grep_in_files(pattern: str, file_list: list[str])` that searches for a pattern across files using Python's `subprocess.run` with `git grep` or `grep`, safely validating that the pattern and files do not allow shell injection.
+
+## Exercise Solutions
+
+```python
+import subprocess
+
+# Solution 1:
+def run_command_safe(command: list[str], timeout_sec: int = 5) -> dict:
+    try:
+        proc = subprocess.run(
+            command,
+            capture_output=True,
+            text=True,
+            timeout=timeout_sec,
+        )
+        return {
+            "success": proc.returncode == 0,
+            "returncode": proc.returncode,
+            "output": proc.stdout,
+            "error": proc.stderr,
+        }
+    except subprocess.TimeoutExpired:
+        return {
+            "success": False,
+            "returncode": -1,
+            "output": "",
+            "error": f"Command timed out after {timeout_sec}s",
+        }
+    except FileNotFoundError:
+        return {
+            "success": False,
+            "returncode": 127,
+            "output": "",
+            "error": f"Executable not found: '{command[0]}'",
+        }
+
+# Verification:
+res = run_command_safe(["python3", "-c", "print('hello from subprocess')"])
+print(res["success"], res["output"].strip())
+# -> True hello from subprocess
+
+res_bad = run_command_safe(["non_existent_binary_12345"])
+print(res_bad["success"], res_bad["returncode"])
+# -> False 127
+```
+
+## Summary
+
+- Never use `os.system`; always use `subprocess.run()` or `subprocess.Popen()`.
+- Pass arguments as lists of strings (`["cmd", "arg1", "arg2"]`) to eliminate shell injection attacks.
+- Avoid `shell=True` unless strictly necessary; sanitize with `shlex.quote()` if unavoidable.
+- Always configure `timeout` and handle `subprocess.TimeoutExpired` to prevent hung worker processes.
+
+## Next Step
+
+Learn modern dependency isolation, packaging standards, and PyPI distribution in [Virtual Environments, pip & Modern Packaging](/docs/python/modules/environments-and-packaging).
